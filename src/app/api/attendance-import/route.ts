@@ -5,15 +5,16 @@ import { existsSync } from 'fs';
 import path from 'path';
 import * as XLSX from 'xlsx';
 
-const UPLOAD_DIR = '/tmp/uploads';
-
 // 解析打卡记录Excel并导入
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { filePath: inputFilePath, location } = body;
     
+    console.log('[Attendance Import] 收到导入请求:', { filePath: inputFilePath, location });
+    
     if (!inputFilePath || !existsSync(inputFilePath)) {
+      console.error('[Attendance Import] 文件不存在:', inputFilePath);
       return NextResponse.json({ error: '文件不存在' }, { status: 400 });
     }
     

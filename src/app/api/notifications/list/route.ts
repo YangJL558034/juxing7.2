@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
       email_error: string | null;
       created_at: string;
       type: string;
+      attachment_file: string | null;
+      attachment_file_name: string | null;
     }>;
 
     return NextResponse.json({

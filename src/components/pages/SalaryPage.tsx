@@ -35,8 +35,9 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import { Clock, Search, Download, Calendar, Users, ExternalLink, Copy, Plus, Trash2, Phone, User, Building, Upload, FileSpreadsheet, Check, UserCog, Edit, Pencil, FileDown, ChevronDown, ChevronUp, PenTool } from 'lucide-react';
+import { Clock, Search, Download, Calendar, Users, ExternalLink, Copy, Plus, Trash2, Phone, User, Building, Upload, FileSpreadsheet, Check, UserCog, Edit, Pencil, FileDown, ChevronDown, ChevronUp, PenTool, RefreshCw } from 'lucide-react';
 import { WorkHoursImport } from './WorkHoursImport';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 interface SalaryRecord {
   id: number;
@@ -426,7 +427,10 @@ export default function SalaryPage() {
     }
   };
   
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const fetchMonthlyRecords = async () => {
+    setIsRefreshing(true);
     try {
       const response = await fetch('/api/work-hours-monthly');
       const data = await response.json();
@@ -435,9 +439,21 @@ export default function SalaryPage() {
       }
     } catch (error) {
       console.error('获取月度工时记录失败:', error);
+    } finally {
+      setIsRefreshing(false);
     }
   };
-  
+
+  // 自动刷新 - 每10秒更新一次工资工时数据
+  const { refreshNow } = useAutoRefresh({
+    enabled: true,
+    interval: 10000,
+    onRefresh: () => {
+      fetchEmployees();
+      fetchMonthlyRecords();
+    },
+  });
+
   // 打开打卡记录编辑对话框
   const openAttendanceEdit = (employeeId: number, employeeName: string, year: number, month: number, day: number, existingTimes: string[]) => {
     const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -994,26 +1010,32 @@ export default function SalaryPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4 max-w-xl">
-          <TabsTrigger value="employees">员工管理</TabsTrigger>
-          <TabsTrigger value="salary">工资明细</TabsTrigger>
-          <TabsTrigger value="workhours">工时记录</TabsTrigger>
-          <TabsTrigger value="attendance">打卡记录</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center justify-between mb-4">
+          <TabsList className="grid grid-cols-4 max-w-xl">
+            <TabsTrigger value="employees">员工管理</TabsTrigger>
+            <TabsTrigger value="salary">工资明细</TabsTrigger>
+            <TabsTrigger value="workhours">工时记录</TabsTrigger>
+            <TabsTrigger value="attendance">打卡记录</TabsTrigger>
+          </TabsList>
+          <Button variant="outline" size="sm" onClick={refreshNow} disabled={isRefreshing} className="gap-2">
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            刷新
+          </Button>
+        </div>
 
         <TabsContent value="employees" className="mt-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    员工列表
-                  </CardTitle>
-                  <CardDescription>管理员工信息，员工可通过姓名和手机号自助查询工时和工资</CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div> 
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  员工列表
+                </CardTitle>
+                <CardDescription>管理员工信息，员工可通过姓名和手机号自助查询工时和工资</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
                     size="sm"
                     variant={employeeLocation === 'office' ? 'default' : 'outline'}
                     onClick={() => setEmployeeLocation('office')}
@@ -1228,7 +1250,7 @@ export default function SalaryPage() {
         </TabsContent>
 
         <TabsContent value="salary" className="mt-6">
-          <Card>
+        <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-5 w-5" />
@@ -1594,7 +1616,7 @@ export default function SalaryPage() {
         </TabsContent>
 
         <TabsContent value="workhours" className="mt-6">
-          <Card>
+        <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
@@ -1812,7 +1834,7 @@ export default function SalaryPage() {
         </TabsContent>
 
         <TabsContent value="attendance" className="mt-6">
-          <Card>
+        <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-5 w-5" />

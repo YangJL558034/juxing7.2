@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Card,
   CardContent,
@@ -14,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Landmark,
@@ -27,6 +27,7 @@ import {
   TrendingUp,
   RefreshCw,
 } from 'lucide-react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 interface ApprovalRecord {
   id: number;
@@ -62,10 +63,97 @@ export default function FinanceReviewPage() {
   const [approvalComment, setApprovalComment] = useState('');
   const [items, setItems] = useState<FinanceItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'record'>('record');
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 格式化年月分组
+  const formatYearMonth = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return `${date.getFullYear()}年${date.getMonth() + 1}月`;
+  };
+
+  // 模糊搜索匹配函数
+  const matchesSearch = (item: FinanceItem, query: string) => {
+    if (!query.trim()) return true;
+    
+    const searchLower = query.toLowerCase();
+    return (
+      item.title.toLowerCase().includes(searchLower) ||
+      item.docNo.toLowerCase().includes(searchLower) ||
+      item.applicantName.toLowerCase().includes(searchLower) ||
+      (item.department && item.department.toLowerCase().includes(searchLower))
+    );
+  };
+
+  // 按年月分组记录（包含搜索过滤）
+  const groupedRecords = useMemo(() => {
+    const recordItems = items.filter(item => 
+      item.status === '已通过' || item.status === '已驳回'
+    );
+    
+    // 应用搜索过滤
+    const filteredItems = recordItems.filter(item => 
+      matchesSearch(item, searchQuery)
+    );
+    
+    const groups: Record<string, FinanceItem[]> = {};
+    
+    filteredItems.forEach(item => {
+      const monthKey = formatYearMonth(item.createTime);
+      if (!groups[monthKey]) {
+        groups[monthKey] = [];
+      }
+      groups[monthKey].push(item);
+    });
+
+    // 按时间倒序排序分组
+    const sortedMonths = Object.keys(groups).sort((a, b) => {
+      // 提取年月进行比较
+      const getDate = (str: string) => {
+        const match = str.match(/(\d+)年(\d+)月/);
+        if (match) {
+          return new Date(parseInt(match[1]), parseInt(match[2]) - 1);
+        }
+        return new Date();
+      };
+      return getDate(b).getTime() - getDate(a).getTime();
+    });
+
+    return { groups, sortedMonths };
+  }, [items, searchQuery]);
+
+  // 监听搜索变化，搜索时自动展开包含结果的月份
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      // 搜索时自动展开所有包含结果的月份
+      const monthsToExpand = new Set<string>();
+      items.forEach(item => {
+        if (matchesSearch(item, searchQuery)) {
+          monthsToExpand.add(formatYearMonth(item.createTime));
+        }
+      });
+      setExpandedMonths(monthsToExpand);
+    }
+  }, [searchQuery, items]);
+
+  // 切换折叠状态
+  const toggleMonth = (monthKey: string) => {
+    setExpandedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(monthKey)) {
+        next.delete(monthKey);
+      } else {
+        next.add(monthKey);
+      }
+      return next;
+    });
+  };
 
   const fetchFinanceItems = async () => {
     setLoading(true);
+    setIsRefreshing(true);
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = {};
@@ -133,8 +221,16 @@ export default function FinanceReviewPage() {
       console.error('获取财务终审单据失败:', error);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
+
+  // 自动刷新 - 每20秒更新一次财务数据
+  const { refreshNow } = useAutoRefresh({
+    enabled: true,
+    interval: 20000,
+    onRefresh: fetchFinanceItems,
+  });
 
   useEffect(() => {
     fetchFinanceItems();
@@ -333,100 +429,122 @@ export default function FinanceReviewPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Landmark className="w-5 h-5 text-purple-500" />
-              {activeTab === 'pending' ? '待财务审核单据' : '审核记录'}
-            </CardTitle>
-            <div className="flex gap-2">
-              <Button
-                variant={activeTab === 'pending' ? 'default' : 'outline'}
-                onClick={() => setActiveTab('pending')}
-              >
-                待审核
-              </Button>
-              <Button
-                variant={activeTab === 'record' ? 'default' : 'outline'}
-                onClick={() => setActiveTab('record')}
-              >
-                记录
-              </Button>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Landmark className="w-5 h-5 text-purple-500" />
+                  {activeTab === 'pending' ? '待财务审核单据' : '审核记录'}
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant={activeTab === 'pending' ? 'default' : 'outline'}
+                    onClick={() => setActiveTab('pending')}
+                  >
+                    待审核
+                  </Button>
+                  <Button
+                    variant={activeTab === 'record' ? 'default' : 'outline'}
+                    onClick={() => setActiveTab('record')}
+                  >
+                    记录
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={refreshNow} disabled={isRefreshing}>
+                    <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    刷新
+                  </Button>
+                </div>
+              </div>
+              <div className="relative">
+                <svg 
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <Input
+                  placeholder="搜索标题、单号、申请人、部门..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </CardHeader>
+          </CardHeader>
         <CardContent>
           <div className="space-y-3">
             {(() => {
-              const filteredItems = activeTab === 'pending' 
-                ? items.filter(item => item.status === '一审已通过待二审')
-                : items.filter(item => item.status === '已通过' || item.status === '已驳回');
-              
-              if (filteredItems.length === 0) {
-                return (
-                  <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-                    <FileText className="w-12 h-12 mb-4" />
-                    <p>{activeTab === 'pending' ? '暂无待财务审核的单据' : '暂无审核记录'}</p>
-                  </div>
+              if (activeTab === 'pending') {
+                // 待审核标签页：保持原有显示并应用搜索
+                const pendingItems = items.filter(item => 
+                  item.status === '一审已通过待二审' && 
+                  matchesSearch(item, searchQuery)
                 );
-              }
-              
-              return filteredItems.map(item => (
-                <div
-                  key={item.id}
-                  className="border rounded-lg p-4 hover:border-purple-300 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        item.type === 'purchase' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
-                      }`}>
-                        {item.type === 'purchase' ? (
-                          <FileText className="w-5 h-5" />
-                        ) : (
-                          <DollarSign className="w-5 h-5" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{item.title}</span>
-                          <Badge variant="outline">{item.typeName}</Badge>
-                          <Badge variant="secondary" className="text-xs">{item.docNo}</Badge>
-                        </div>
-                        <p className="text-sm text-slate-500">
-                          申请人: {item.applicantName} | 部门: {item.department} | {item.createTime}
-                        </p>
-                        <div className="flex items-center gap-4 mt-2 text-sm">
-                          <span className="text-slate-500">已审批: <span className="text-slate-700">{item.approvals.length} 级</span></span>
-                        </div>
-                        {item.approvals.length > 0 && (
-                          <div className="flex items-center gap-2 flex-wrap mt-2">
-                            {(() => {
-                              const lastApproval = item.approvals[item.approvals.length - 1];
-                              return (
-                                <Badge className={lastApproval.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                                  {lastApproval.approver_name}({getActionText(lastApproval.action)})
-                                </Badge>
-                              );
-                            })()}
-                          </div>
-                        )}
-                      </div>
+                
+                if (pendingItems.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                      <FileText className="w-12 h-12 mb-4" />
+                      <p>暂无待财务审核的单据</p>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-slate-800">¥{item.amount.toLocaleString()}</p>
-                        <Badge className={getStatusColor(item.status)}>{item.status}</Badge>
+                  );
+                }
+                
+                return pendingItems.map(item => (
+                  <div
+                    key={item.id}
+                    className="border rounded-lg p-4 hover:border-purple-300 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          item.type === 'purchase' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
+                        }`}>
+                          {item.type === 'purchase' ? (
+                            <FileText className="w-5 h-5" />
+                          ) : (
+                            <DollarSign className="w-5 h-5" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{item.title}</span>
+                            <Badge variant="outline">{item.typeName}</Badge>
+                            <Badge variant="secondary" className="text-xs">{item.docNo}</Badge>
+                          </div>
+                          <p className="text-sm text-slate-500">
+                            申请人: {item.applicantName} | 部门: {item.department} | {item.createTime}
+                          </p>
+                          <div className="flex items-center gap-4 mt-2 text-sm">
+                            <span className="text-slate-500">已审批: <span className="text-slate-700">{item.approvals.length} 级</span></span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleViewDetail(item)}
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          详情
-                        </Button>
-                        {activeTab === 'pending' && (
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-slate-800">¥{item.amount.toLocaleString()}</p>
+                          <Badge className={getStatusColor(item.status)}>{item.status}</Badge>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleViewDetail(item)}
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            详情
+                          </Button>
                           <>
                             <Button
                               size="sm"
@@ -445,27 +563,137 @@ export default function FinanceReviewPage() {
                               驳回
                             </Button>
                           </>
-                        )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                  {item.approvals.length > 0 && (
-                    <div className="mt-3 pt-3 border-t">
-                      <p className="text-sm text-slate-500 mb-2">终审记录:</p>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {(() => {
-                          const lastApproval = item.approvals[item.approvals.length - 1];
-                          return (
-                            <Badge className={lastApproval.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                              {lastApproval.approver_name}({getActionText(lastApproval.action)})
-                            </Badge>
-                          );
-                        })()}
-                      </div>
+                ));
+              } else {
+                // 记录标签页：按年月折叠显示
+                if (groupedRecords.sortedMonths.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                      <FileText className="w-12 h-12 mb-4" />
+                      <p>暂无审核记录</p>
                     </div>
-                  )}
-                </div>
-              ));
+                  );
+                }
+                
+                return groupedRecords.sortedMonths.map(monthKey => {
+                  const monthItems = groupedRecords.groups[monthKey];
+                  const isExpanded = expandedMonths.has(monthKey);
+                  
+                  return (
+                    <div key={monthKey} className="border rounded-lg overflow-hidden">
+                      {/* 折叠标题栏 */}
+                      <button
+                        onClick={() => toggleMonth(monthKey)}
+                        className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="text-slate-700">
+                            <svg 
+                              className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                              fill="none" 
+                              viewBox="0 0 24 24" 
+                              stroke="currentColor"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                          <span className="font-semibold text-slate-800">{monthKey}</span>
+                          <Badge variant="outline" className="text-xs">{monthItems.length} 条记录</Badge>
+                        </div>
+                        <div className="text-sm text-slate-500">
+                          点击 {isExpanded ? '收起' : '展开'}
+                        </div>
+                      </button>
+                      
+                      {/* 展开内容 */}
+                      {isExpanded && (
+                        <div className="border-t">
+                          {monthItems.map(item => (
+                            <div
+                              key={item.id}
+                              className="p-4 border-b last:border-b-0 hover:bg-slate-50 transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                    item.type === 'purchase' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
+                                  }`}>
+                                    {item.type === 'purchase' ? (
+                                      <FileText className="w-5 h-5" />
+                                    ) : (
+                                      <DollarSign className="w-5 h-5" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium">{item.title}</span>
+                                      <Badge variant="outline">{item.typeName}</Badge>
+                                      <Badge variant="secondary" className="text-xs">{item.docNo}</Badge>
+                                    </div>
+                                    <p className="text-sm text-slate-500">
+                                      申请人: {item.applicantName} | 部门: {item.department} | {item.createTime}
+                                    </p>
+                                    <div className="flex items-center gap-4 mt-2 text-sm">
+                                      <span className="text-slate-500">已审批: <span className="text-slate-700">{item.approvals.length} 级</span></span>
+                                    </div>
+                                    {item.approvals.length > 0 && (
+                                      <div className="flex items-center gap-2 flex-wrap mt-2">
+                                        {(() => {
+                                          const lastApproval = item.approvals[item.approvals.length - 1];
+                                          return (
+                                            <Badge className={lastApproval.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                                              {lastApproval.approver_name}({getActionText(lastApproval.action)})
+                                            </Badge>
+                                          );
+                                        })()}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <div className="text-right">
+                                    <p className="text-lg font-bold text-slate-800">¥{item.amount.toLocaleString()}</p>
+                                    <Badge className={getStatusColor(item.status)}>{item.status}</Badge>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleViewDetail(item)}
+                                    >
+                                      <Eye className="w-4 h-4 mr-1" />
+                                      详情
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                              {item.approvals.length > 0 && (
+                                <div className="mt-3 pt-3 border-t">
+                                  <p className="text-sm text-slate-500 mb-2">终审记录:</p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {(() => {
+                                      const lastApproval = item.approvals[item.approvals.length - 1];
+                                      return (
+                                        <Badge className={lastApproval.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                                          {lastApproval.approver_name}({getActionText(lastApproval.action)})
+                                        </Badge>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              }
             })()}
           </div>
         </CardContent>

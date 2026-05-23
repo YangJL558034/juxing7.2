@@ -73,7 +73,7 @@ function getSmtpConfig(): SmtpConfig | null {
   }
 }
 
-export async function sendEmail(to: string, subject: string, content: string): Promise<{ success: boolean; error?: string }> {
+export async function sendEmail(to: string, subject: string, content: string, attachment?: { filePath: string; fileName: string }): Promise<{ success: boolean; error?: string }> {
   if (!to || !to.trim()) {
     console.log('[Email] 收件人邮箱为空，跳过发送');
     return { success: false, error: '收件人邮箱为空' };
@@ -135,7 +135,11 @@ export async function sendEmail(to: string, subject: string, content: string): P
       from: config.from_email,
       to,
       subject,
-      html: content
+      html: content,
+      attachments: attachment ? [{
+        path: attachment.filePath,
+        filename: attachment.fileName
+      }] : []
     });
     
     console.log(`[Email] 邮件发送成功: to=${to}, messageId=${result.messageId}`);

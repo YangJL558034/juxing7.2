@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Header, Sidebar } from '@/components/layout';
 import { Dashboard } from '@/components/pages/Dashboard';
 import { TodoPage } from '@/components/pages/TodoPage';
@@ -30,8 +30,40 @@ import ApprovalCenter from '@/components/pages/ApprovalCenter';
 import FinanceReviewPage from '@/components/pages/FinanceReviewPage';
 import AIChatPage from '@/app/ai-chat/page';
 import NotificationCenterPage from '@/components/pages/NotificationCenterPage';
+import { logOperation, LogActions } from '@/lib/log';
 
 type PageKey = 'dashboard' | 'taskmanage' | 'distribution' | 'todo' | 'leads' | 'customers' | 'contacts' | 'contracts' | 'invoices' | 'followup' | 'products' | 'finance' | 'tasks' | 'salary' | 'generate' | 'ai-chat' | 'assets' | 'organization' | 'permission' | 'purchase-requests' | 'expense-claims' | 'approval-center' | 'finance-review' | 'smtp' | 'usermanage' | 'operation-logs' | 'settings' | 'notification-center';
+
+const pageNames: Record<string, string> = {
+  dashboard: '仪表板',
+  taskmanage: '任务管理',
+  distribution: '客户分配',
+  todo: '待办事项',
+  leads: '潜在客户',
+  customers: '客户管理',
+  contacts: '联系人',
+  contracts: '合同管理',
+  invoices: '发票管理',
+  followup: '客户跟进',
+  products: '产品管理',
+  finance: '财务管理',
+  tasks: '任务管理',
+  salary: '工资管理',
+  generate: '工资生成',
+  'ai-chat': 'AI聊天',
+  assets: '资产管理',
+  organization: '组织管理',
+  permission: '权限管理',
+  'purchase-requests': '采购申请',
+  'expense-claims': '费用报销',
+  'approval-center': '审批中心',
+  'finance-review': '财务审批',
+  smtp: '邮件配置',
+  usermanage: '用户管理',
+  'operation-logs': '操作日志',
+  settings: '系统设置',
+  'notification-center': '通知中心',
+};
 
 interface MainLayoutProps {
   user?: {
@@ -49,6 +81,38 @@ export function MainLayout({ user }: MainLayoutProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [showLoginNotification, setShowLoginNotification] = useState(false);
+  const [loginUnreadCount, setLoginUnreadCount] = useState(0);
+
+  // 登录时检查未读消息
+  useEffect(() => {
+    if (user?.id) {
+      const checkUnreadNotifications = async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await fetch('/api/notifications?receiverId=' + user.id, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+          });
+          const data = await response.json();
+          if (data.success) {
+            const unreadCount = (data.data || []).filter((n: any) => n.is_read === 0).length;
+            if (unreadCount > 0) {
+              setLoginUnreadCount(unreadCount);
+              setShowLoginNotification(true);
+              // 5秒后自动关闭
+              setTimeout(() => {
+                setShowLoginNotification(false);
+              }, 5000);
+            }
+          }
+        } catch (error) {
+          console.error('检查未读通知失败:', error);
+        }
+      };
+      
+      checkUnreadNotifications();
+    }
+  }, [user]);
 
   // 检测屏幕尺寸
   useEffect(() => {
@@ -96,13 +160,24 @@ export function MainLayout({ user }: MainLayoutProps) {
   };
 
   // 导航时检查权限
-  const handleNavigate = (key: string) => {
+  const handleNavigate = useCallback((key: string) => {
     if (!hasPermission(key)) {
       alert('您没有权限访问此功能，请联系管理员开通');
       return;
     }
     setActivePage(key as PageKey);
-  };
+    
+    // 记录页面访问日志
+    if (user?.id) {
+      logOperation({
+        module: key,
+        action: LogActions.VIEW,
+        details: { message: `访问页面: ${pageNames[key] || key}` },
+        userId: user.id,
+        userName: user.name,
+      }).catch(err => console.error('记录导航日志失败:', err));
+    }
+  }, [hasPermission, user]);
 
   const renderPage = () => {
     switch (activePage) {
@@ -137,7 +212,7 @@ export function MainLayout({ user }: MainLayoutProps) {
       case 'generate':
         return <GeneratePage />;
       case 'ai-chat':
-        return <AIChatPage />;
+        return <AIChatPage user={user} />;
       case 'assets':
         return <AssetsPage />;
       case 'organization':
@@ -169,6 +244,39 @@ export function MainLayout({ user }: MainLayoutProps) {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* 登录时的未读消息弹窗 */}
+      {showLoginNotification && loginUnreadCount > 0 && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-top-5 fade-in duration-300">
+          <div className="bg-white rounded-lg shadow-2xl border border-orange-200 overflow-hidden max-w-md">
+            <div className="bg-orange-500 text-white px-4 py-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/>
+                </svg>
+                <span className="font-medium text-sm">您有 {loginUnreadCount} 条未读消息</span>
+              </div>
+              <button
+                onClick={() => setShowLoginNotification(false)}
+                className="hover:bg-orange-600 rounded p-1 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div className="p-4 text-center">
+              <p className="text-sm text-gray-600">您有 <span className="font-bold text-orange-500">{loginUnreadCount}</span> 条未读通知，请点击右上角的铃铛图标查看。</p>
+              <button
+                onClick={() => setShowLoginNotification(false)}
+                className="mt-3 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm"
+              >
+                我知道了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Header 
         onToggleSidebar={() => {
           if (isMobile) {

@@ -1,0 +1,17 @@
+{
+  "app_type": "node",
+  "build_command": "pnpm run build",
+  "start_command": "pnpm run start",
+  "install_command": "pnpm install",
+  "node_version": "20",
+  "install_deps": true,
+  "cache": {
+    "paths": [
+      "node_modules",
+      ".next/cache"
+    ]
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

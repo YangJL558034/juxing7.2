@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -28,6 +28,7 @@ import {
   Filter,
   RefreshCw,
 } from 'lucide-react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 interface ApprovalRecord {
   id: number;
@@ -72,9 +73,43 @@ export default function ApprovalCenter() {
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [approvalComment, setApprovalComment] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [todoItems, setTodoItems] = useState<ApprovalItem[]>([]);
   const [doneItems, setDoneItems] = useState<ApprovalItem[]>([]);
   const [currentUserId, setCurrentUserId] = useState<number>(0);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+  
+  // 格式化年月分组
+  const formatYearMonth = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return `${date.getFullYear()}年${date.getMonth() + 1}月`;
+  };
+  
+  // 模糊搜索匹配函数
+  const matchesSearch = (item: ApprovalItem, query: string) => {
+    if (!query.trim()) return true;
+    
+    const searchLower = query.toLowerCase();
+    return (
+      item.title.toLowerCase().includes(searchLower) ||
+      item.docNo.toLowerCase().includes(searchLower) ||
+      item.applicantName.toLowerCase().includes(searchLower) ||
+      (item.department && item.department.toLowerCase().includes(searchLower))
+    );
+  };
+  
+  // 切换折叠状态
+  const toggleMonth = (monthKey: string) => {
+    setExpandedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(monthKey)) {
+        next.delete(monthKey);
+      } else {
+        next.add(monthKey);
+      }
+      return next;
+    });
+  };
 
   // 获取当前用户信息
   useEffect(() => {
@@ -111,6 +146,7 @@ export default function ApprovalCenter() {
 
   const fetchApprovalItems = async () => {
     setLoading(true);
+    setIsRefreshing(true);
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = {};
@@ -191,19 +227,67 @@ export default function ApprovalCenter() {
       alert('获取审批列表失败，请刷新页面重试');
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
+  // 自动刷新 - 每20秒更新一次审批数据
+  const { refreshNow } = useAutoRefresh({
+    enabled: true,
+    interval: 20000,
+    onRefresh: fetchApprovalItems,
+  });
+
   const handleRefresh = () => {
-    fetchApprovalItems();
+    refreshNow();
   };
 
-  const filteredItems = (activeTab === 'todo' ? todoItems : doneItems).filter(item =>
-    item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.applicantName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.docNo.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // 过滤后的待办和已办
+  const filteredTodoItems = todoItems.filter(item => matchesSearch(item, searchQuery));
+  
+  // 已办的按年月分组
+  const groupedDoneItems = useMemo(() => {
+    const filtered = doneItems.filter(item => matchesSearch(item, searchQuery));
+    
+    const groups: Record<string, ApprovalItem[]> = {};
+    
+    filtered.forEach(item => {
+      const monthKey = formatYearMonth(item.createTime);
+      if (!groups[monthKey]) {
+        groups[monthKey] = [];
+      }
+      groups[monthKey].push(item);
+    });
+
+    // 按时间倒序排序分组
+    const sortedMonths = Object.keys(groups).sort((a, b) => {
+      // 提取年月进行比较
+      const getDate = (str: string) => {
+        const match = str.match(/(\d+)年(\d+)月/);
+        if (match) {
+          return new Date(parseInt(match[1]), parseInt(match[2]) - 1);
+        }
+        return new Date();
+      };
+      return getDate(b).getTime() - getDate(a).getTime();
+    });
+
+    return { groups, sortedMonths };
+  }, [doneItems, searchQuery]);
+  
+  // 监听搜索变化，搜索时自动展开包含结果的月份
+  useEffect(() => {
+    if (searchQuery.trim() && activeTab === 'done') {
+      // 搜索时自动展开所有包含搜索结果的月份
+      const monthsToExpand = new Set<string>();
+      doneItems.forEach(item => {
+        if (matchesSearch(item, searchQuery)) {
+          monthsToExpand.add(formatYearMonth(item.createTime));
+        }
+      });
+      setExpandedMonths(monthsToExpand);
+    }
+  }, [searchQuery, doneItems, activeTab]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -398,6 +482,10 @@ export default function ApprovalCenter() {
               <Filter className="w-4 h-4 mr-2" />
               筛选
             </Button>
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              刷新
+            </Button>
             <div className="flex bg-slate-100 rounded-lg p-1">
               <Button
                 variant={activeTab === 'todo' ? 'default' : 'ghost'}
@@ -420,72 +508,73 @@ export default function ApprovalCenter() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {filteredItems.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-                <FileText className="w-12 h-12 mb-4" />
-                <p>{activeTab === 'todo' ? '暂无待审批单据' : '暂无已办审批记录'}</p>
-              </div>
-            ) : (
-              filteredItems.map(item => (
-                <div
-                  key={item.id}
-                  className="border rounded-lg p-4 hover:border-blue-300 transition-colors cursor-pointer"
-                  onClick={() => handleViewDetail(item)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        item.type === 'purchase' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
-                      }`}>
-                        {item.type === 'purchase' ? (
-                          <FileText className="w-5 h-5" />
-                        ) : (
-                          <DollarSign className="w-5 h-5" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{item.title}</span>
-                          <Badge variant="outline">{item.typeName}</Badge>
-                          <Badge variant="secondary" className="text-xs">{item.docNo}</Badge>
+            {activeTab === 'todo' ? (
+              // 待审批标签页保持原有显示
+              filteredTodoItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                  <FileText className="w-12 h-12 mb-4" />
+                  <p>暂无待审批单据</p>
+                </div>
+              ) : (
+                filteredTodoItems.map(item => (
+                  <div
+                    key={item.id}
+                    className="border rounded-lg p-4 hover:border-blue-300 transition-colors cursor-pointer"
+                    onClick={() => handleViewDetail(item)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          item.type === 'purchase' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
+                        }`}>
+                          {item.type === 'purchase' ? (
+                            <FileText className="w-5 h-5" />
+                          ) : (
+                            <DollarSign className="w-5 h-5" />
+                          )}
                         </div>
-                        <p className="text-sm text-slate-500">
-                          申请人: {item.applicantName} | 部门: {item.department || '-'} | {item.createTime}
-                        </p>
-                        <p className="text-sm text-slate-500">
-                          当前审批人: {item.currentApproverName || (item.status === '一审已通过待二审' ? '财务终审（管理员）' : '-')}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-slate-800">¥{item.amount.toLocaleString()}</p>
-                        <Badge className={getStatusColor(item.status)}>{item.status}</Badge>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-slate-400" />
-                    </div>
-                  </div>
-                  {item.approvals && item.approvals.length > 0 && (
-                    <div className="mt-3 pt-3 border-t">
-                      <p className="text-sm text-slate-500 mb-2">审批流程:</p>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {item.approvals.map((record, index) => (
-                          <div key={record.id} className="flex items-center gap-1">
-                            {index > 0 && <span className="text-slate-400">→</span>}
-                            <Badge className={record.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                              {record.approver_name}({getActionText(record.action)})
-                            </Badge>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{item.title}</span>
+                            <Badge variant="outline">{item.typeName}</Badge>
+                            <Badge variant="secondary" className="text-xs">{item.docNo}</Badge>
                           </div>
-                        ))}
-                        {item.status !== '已通过' && item.status !== '已驳回' && (
-                          <Badge className={item.status === '一审已通过待二审' ? 'bg-purple-100 text-purple-700' : 'bg-yellow-100 text-yellow-700'}>
-                            {item.status === '一审已通过待二审' ? '等待财务终审' : '等待审批'}
-                          </Badge>
-                        )}
+                          <p className="text-sm text-slate-500">
+                            申请人: {item.applicantName} | 部门: {item.department || '-'} | {item.createTime}
+                          </p>
+                          <p className="text-sm text-slate-500">
+                            当前审批人: {item.currentApproverName || (item.status === '一审已通过待二审' ? '财务终审（管理员）' : '-')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-slate-800">¥{item.amount.toLocaleString()}</p>
+                          <Badge className={getStatusColor(item.status)}>{item.status}</Badge>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-slate-400" />
                       </div>
                     </div>
-                  )}
-                  {activeTab === 'todo' && (
+                    {item.approvals && item.approvals.length > 0 && (
+                      <div className="mt-3 pt-3 border-t">
+                        <p className="text-sm text-slate-500 mb-2">审批流程:</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {item.approvals.map((record, index) => (
+                            <div key={record.id} className="flex items-center gap-1">
+                              {index > 0 && <span className="text-slate-400">→</span>}
+                              <Badge className={record.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                                {record.approver_name}({getActionText(record.action)})
+                              </Badge>
+                            </div>
+                          ))}
+                          {item.status !== '已通过' && item.status !== '已驳回' && (
+                            <Badge className={item.status === '一审已通过待二审' ? 'bg-purple-100 text-purple-700' : 'bg-yellow-100 text-yellow-700'}>
+                              {item.status === '一审已通过待二审' ? '等待财务终审' : '等待审批'}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     <div className="mt-3 pt-3 border-t flex gap-2">
                       <Button
                         size="sm"
@@ -512,9 +601,119 @@ export default function ApprovalCenter() {
                         查看详情
                       </Button>
                     </div>
-                  )}
+                  </div>
+                ))
+              )
+            ) : (
+              // 已办标签页：按年月折叠显示
+              groupedDoneItems.sortedMonths.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                  <FileText className="w-12 h-12 mb-4" />
+                  <p>暂无已办审批记录</p>
                 </div>
-              ))
+              ) : (
+                groupedDoneItems.sortedMonths.map(monthKey => {
+                  const monthItems = groupedDoneItems.groups[monthKey];
+                  const isExpanded = expandedMonths.has(monthKey);
+                  
+                  return (
+                    <div key={monthKey} className="border rounded-lg overflow-hidden">
+                      {/* 折叠标题栏 */}
+                      <button
+                        onClick={() => toggleMonth(monthKey)}
+                        className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="text-slate-700">
+                            <svg 
+                              className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                              fill="none" 
+                              viewBox="0 0 24 24" 
+                              stroke="currentColor"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                          <span className="font-semibold text-slate-800">{monthKey}</span>
+                          <Badge variant="outline" className="text-xs">{monthItems.length} 条记录</Badge>
+                        </div>
+                        <div className="text-sm text-slate-500">
+                          点击 {isExpanded ? '收起' : '展开'}
+                        </div>
+                      </button>
+                      
+                      {/* 展开内容 */}
+                      {isExpanded && (
+                        <div className="border-t">
+                          {monthItems.map(item => (
+                            <div
+                              key={item.id}
+                              className="p-4 border-b last:border-b-0 hover:bg-slate-50 transition-colors cursor-pointer"
+                              onClick={() => handleViewDetail(item)}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                    item.type === 'purchase' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
+                                  }`}>
+                                    {item.type === 'purchase' ? (
+                                      <FileText className="w-5 h-5" />
+                                    ) : (
+                                      <DollarSign className="w-5 h-5" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium">{item.title}</span>
+                                      <Badge variant="outline">{item.typeName}</Badge>
+                                      <Badge variant="secondary" className="text-xs">{item.docNo}</Badge>
+                                    </div>
+                                    <p className="text-sm text-slate-500">
+                                      申请人: {item.applicantName} | 部门: {item.department || '-'} | {item.createTime}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <div className="text-right">
+                                    <p className="text-lg font-bold text-slate-800">¥{item.amount.toLocaleString()}</p>
+                                    <Badge className={getStatusColor(item.status)}>{item.status}</Badge>
+                                  </div>
+                                  <ChevronRight className="w-5 h-5 text-slate-400" />
+                                </div>
+                              </div>
+                              {item.approvals && item.approvals.length > 0 && (
+                                <div className="mt-3 pt-3 border-t">
+                                  <p className="text-sm text-slate-500 mb-2">审批流程:</p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {item.approvals.map((record, index) => (
+                                      <div key={record.id} className="flex items-center gap-1">
+                                        {index > 0 && <span className="text-slate-400">→</span>}
+                                        <Badge className={record.action === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                                          {record.approver_name}({getActionText(record.action)})
+                                        </Badge>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              <div className="mt-3 pt-3 border-t">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => { e.stopPropagation(); handleViewDetail(item); }}
+                                >
+                                  <Eye className="w-4 h-4 mr-1" />
+                                  查看详情
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )
             )}
           </div>
         </CardContent>

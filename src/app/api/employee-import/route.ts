@@ -4,11 +4,20 @@ import { query } from '@/lib/database';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('[Employee Import] 收到导入请求');
+    
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const location = formData.get('location') as string || '车间';
 
+    console.log('[Employee Import] 参数:', { 
+      fileName: file?.name, 
+      fileSize: file?.size, 
+      location 
+    });
+
     if (!file) {
+      console.log('[Employee Import] 没有上传文件');
       return NextResponse.json({ error: '请上传文件' }, { status: 400 });
     }
 
@@ -18,6 +27,12 @@ export async function POST(request: NextRequest) {
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][];
+
+    console.log('[Employee Import] 文件解析完成:', {
+      sheetCount: workbook.SheetNames.length,
+      sheetName,
+      rowCount: data.length
+    });
 
     // 解析数据
     // 表头在第6行（索引6），数据从第7行开始
@@ -63,7 +78,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    console.log('[Employee Import] 解析完成:', { employeeCount: employees.length });
+
     if (employees.length === 0) {
+      console.log('[Employee Import] 未找到有效的员工数据');
       return NextResponse.json({ error: '未找到有效的员工数据' }, { status: 400 });
     }
 
@@ -72,6 +90,7 @@ export async function POST(request: NextRequest) {
     let updated = 0;
     const errors: string[] = [];
 
+    console.log('[Employee Import] 开始导入到数据库');
     for (const emp of employees) {
       try {
         // 检查是否已存在（通过姓名+身份证）
@@ -107,10 +126,13 @@ export async function POST(request: NextRequest) {
           );
           imported++;
         }
-      } catch {
+      } catch (error) {
+        console.error('[Employee Import] 导入失败:', emp.name, error);
         errors.push(`${emp.name} 导入失败`);
       }
     }
+
+    console.log('[Employee Import] 导入完成:', { imported, updated, errors: errors.length });
 
     return NextResponse.json({
       success: true,
@@ -122,7 +144,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('员工导入失败:', error);
+    console.error('[Employee Import] 导入失败:', error);
     return NextResponse.json({ 
       error: '导入失败', 
       details: error instanceof Error ? error.message : '未知错误' 

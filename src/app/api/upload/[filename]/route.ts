@@ -3,17 +3,20 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 
-const UPLOAD_DIR = '/tmp/uploads';
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
 ) {
   try {
     const { filename } = await params;
-    const filePath = path.join(UPLOAD_DIR, filename);
+    
+    // 从 public/uploads/notifications/ 目录读取文件
+    const filePath = path.join(process.cwd(), 'public', 'uploads', 'notifications', filename);
+    
+    console.log(`[Download API] 尝试读取文件: ${filePath}`);
     
     if (!existsSync(filePath)) {
+      console.log(`[Download API] 文件不存在: ${filePath}`);
       return NextResponse.json({ error: '文件不存在' }, { status: 404 });
     }
     
@@ -26,9 +29,17 @@ export async function GET(
       '.xls': 'application/vnd.ms-excel',
       '.csv': 'text/csv',
       '.txt': 'text/plain',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.pdf': 'application/pdf',
     };
     
     const contentType = contentTypes[ext] || 'application/octet-stream';
+    
+    console.log(`[Download API] 文件读取成功，Content-Type: ${contentType}`);
     
     return new NextResponse(fileBuffer, {
       headers: {

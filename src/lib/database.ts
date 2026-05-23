@@ -721,9 +721,20 @@ function initDatabase(dbInstance: Database.Database) {
       read_at DATETIME,
       email_sent INTEGER DEFAULT 0,
       email_error TEXT,
+      attachment_file TEXT,
+      attachment_file_name TEXT,
       created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
     )
   `);
+  
+  // 添加 attachment_file 和 attachment_file_name 字段（如果不存在）
+  try {
+    dbInstance.exec(`ALTER TABLE notifications ADD COLUMN attachment_file TEXT`);
+    dbInstance.exec(`ALTER TABLE notifications ADD COLUMN attachment_file_name TEXT`);
+    console.log('Added attachment columns to notifications table');
+  } catch (e) {
+    // 字段已存在，忽略错误
+  }
 
   // SMTP配置表
   dbInstance.exec(`
@@ -754,6 +765,17 @@ function initDatabase(dbInstance: Database.Database) {
       request_method TEXT,
       request_body TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // AI聊天记录表
+  dbInstance.exec(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
     )
   `);
 
@@ -1082,6 +1104,26 @@ function initDatabase(dbInstance: Database.Database) {
     console.log('Migration for messages fields:', e);
   }
   
+  // 初始化默认部门
+  const defaultDepartments = [
+    { id: 1, name: '行政部', description: '负责公司行政管理' },
+    { id: 2, name: '财务部', description: '负责公司财务管理' },
+    { id: 3, name: '人力资源部', description: '负责人力资源管理' },
+    { id: 4, name: '技术部', description: '负责技术研发' },
+    { id: 5, name: '市场部', description: '负责市场推广' },
+    { id: 6, name: '销售部', description: '负责产品销售' },
+    { id: 7, name: '生产部', description: '负责生产制造' },
+  ];
+  
+  for (const dept of defaultDepartments) {
+    const exists = dbInstance.prepare('SELECT id FROM departments WHERE id = ?').get(dept.id);
+    if (!exists) {
+      dbInstance.prepare('INSERT INTO departments (id, name, description) VALUES (?, ?, ?)').run(
+        dept.id, dept.name, dept.description
+      );
+    }
+  }
+  
   // 初始化默认职位
   const defaultPositions = [
     { name: '普通员工', level: 1, can_approve_purchase: 0, can_approve_expense: 0, approval_limit: 0 },
@@ -1161,6 +1203,41 @@ function initDatabase(dbInstance: Database.Database) {
   
   // 重新启用外键约束
   dbInstance.pragma('foreign_keys = ON');
+  
+  // 清理35天前的过期日志
+  console.log('数据库初始化完成，开始清理过期日志...');
+  try {
+    // 清理35天前的操作日志
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 35);
+    const cutoffDateStr = cutoffDate.toISOString().slice(0, 19).replace('T', ' ');
+    
+    // 检查 operation_logs 表是否存在
+    const opTableExists = dbInstance
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='operation_logs'")
+      .get();
+    
+    if (opTableExists) {
+      const opResult = dbInstance
+        .prepare('DELETE FROM operation_logs WHERE created_at < ?')
+        .run(cutoffDateStr);
+      console.log(`已删除 ${opResult.changes} 条过期操作日志`);
+    }
+    
+    // 检查 chat_messages 表是否存在
+    const chatTableExists = dbInstance
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_messages'")
+      .get();
+    
+    if (chatTableExists) {
+      const chatResult = dbInstance
+        .prepare('DELETE FROM chat_messages WHERE created_at < ?')
+        .run(cutoffDateStr);
+      console.log(`已删除 ${chatResult.changes} 条过期聊天记录`);
+    }
+  } catch (error) {
+    console.error('清理过期日志失败:', error);
+  }
 }
 
 // 清理离职超过一周的员工数据
@@ -1197,8 +1274,18 @@ function cleanResignedEmployees(dbInstance: Database.Database) {
 // 查询助手
 export const query = {
   // 用户相关
-  findUserByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
-  findUserById: db.prepare('SELECT * FROM users WHERE id = ?'),
+  findUserByUsername: db.prepare(`
+      SELECT u.*, COALESCE(d.name, u.department) as department 
+      FROM users u 
+      LEFT JOIN departments d ON u.department_id = d.id 
+      WHERE u.username = ?
+    `),
+  findUserById: db.prepare(`
+      SELECT u.*, COALESCE(d.name, u.department) as department 
+      FROM users u 
+      LEFT JOIN departments d ON u.department_id = d.id 
+      WHERE u.id = ?
+    `),
   getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
   createUser: db.prepare('INSERT INTO users (username, password, name, role, department, email) VALUES (?, ?, ?, ?, ?, ?)'),
   updateUser: db.prepare('UPDATE users SET name = ?, role = ?, department = ?, email = ? WHERE id = ?'),
@@ -1258,7 +1345,11 @@ export const query = {
   deleteTodo: db.prepare('DELETE FROM todos WHERE id = ?'),
   
   // 用户管理相关
-  getAllUsersDetail: db.prepare('SELECT id, username, name, role, department, department_id, position_id, manager_id, email, created_at FROM users'),
+  getAllUsersDetail: db.prepare(`
+      SELECT u.id, u.username, u.name, u.role, COALESCE(d.name, u.department) as department, u.department_id, u.position_id, u.manager_id, u.email, u.created_at 
+      FROM users u 
+      LEFT JOIN departments d ON u.department_id = d.id
+    `),
   
   // 权限相关
   getAllPermissions: db.prepare('SELECT * FROM permissions ORDER BY id'),

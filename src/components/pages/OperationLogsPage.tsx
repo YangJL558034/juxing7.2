@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Table,
   TableBody,
@@ -12,6 +12,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -19,7 +20,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, FileText, User, Monitor, Globe } from 'lucide-react';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import { Search, FileText, User, Monitor, Globe, Calendar, ChevronDown, RefreshCw } from 'lucide-react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 interface OperationLog {
   id: number;
@@ -71,15 +79,13 @@ export default function OperationLogsPage() {
     totalPages: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [moduleFilter, setModuleFilter] = useState('all');
 
-  useEffect(() => {
-    fetchLogs();
-  }, [pagination.page, moduleFilter]);
-
   const fetchLogs = async () => {
     setLoading(true);
+    setIsRefreshing(true);
     try {
       const params = new URLSearchParams({
         page: pagination.page.toString(),
@@ -100,8 +106,20 @@ export default function OperationLogsPage() {
       console.error('获取日志失败:', error);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
+
+  // 自动刷新 - 每20秒更新一次日志
+  const { refreshNow } = useAutoRefresh({
+    enabled: true,
+    interval: 20000,
+    onRefresh: fetchLogs,
+  });
+
+  useEffect(() => {
+    fetchLogs();
+  }, [pagination.page, moduleFilter]);
 
   const parseDetails = (details: string) => {
     try {
@@ -134,6 +152,38 @@ export default function OperationLogsPage() {
     );
   });
 
+  // 按时间分组的日志记录
+  const groupedLogs = useMemo(() => {
+    const groups: { [key: string]: OperationLog[] } = {};
+    
+    filteredLogs.forEach(log => {
+      const date = new Date(log.created_at);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const key = `${year}年${month}月`;
+      
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(log);
+    });
+    
+    // 按时间倒序排序（最新的在前面）
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+      const [yearA, monthA] = a.match(/(\d+)年(\d+)月/)!.slice(1).map(Number);
+      const [yearB, monthB] = b.match(/(\d+)年(\d+)月/)!.slice(1).map(Number);
+      if (yearB !== yearA) return yearB - yearA;
+      return monthB - monthA;
+    });
+    
+    return sortedKeys.map(key => ({
+      key,
+      logs: groups[key].sort((a, b) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+    }));
+  }, [filteredLogs]);
+
   return (
     <div className="space-y-6">
       <Card>
@@ -150,8 +200,8 @@ export default function OperationLogsPage() {
         </CardHeader>
         <CardContent>
           {/* 筛选条件 */}
-          <div className="flex gap-4 mb-6">
-            <div className="relative flex-1">
+          <div className="flex flex-wrap gap-4 mb-6">
+            <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="搜索用户、模块、IP..."
@@ -175,90 +225,134 @@ export default function OperationLogsPage() {
                 <SelectItem value="system">系统设置</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={refreshNow}
+              disabled={isRefreshing}
+              className="gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              刷新
+            </Button>
           </div>
 
           {/* 日志表格 */}
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[160px]">时间</TableHead>
-                  <TableHead className="w-[100px]">用户</TableHead>
-                  <TableHead className="w-[120px]">模块</TableHead>
-                  <TableHead className="w-[100px]">操作</TableHead>
-                  <TableHead>详情</TableHead>
-                  <TableHead className="w-[140px]">IP地址</TableHead>
-                  <TableHead className="w-[200px]">设备信息</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
-                      加载中...
-                    </TableCell>
-                  </TableRow>
-                ) : filteredLogs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
-                      暂无日志记录
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredLogs.map((log) => {
-                    const details = parseDetails(log.details);
-                    return (
-                      <TableRow key={log.id}>
-                        <TableCell className="text-sm">
-                          {formatDateTime(log.created_at)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{log.user_name}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {moduleLabels[log.module] || log.module}
+          <div className="space-y-4">
+            {loading ? (
+              <div className="border rounded-lg">
+                <Table>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8">
+                        加载中...
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            ) : groupedLogs.length === 0 ? (
+              <div className="border rounded-lg">
+                <Table>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8">
+                        暂无日志记录
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <Accordion type="single" collapsible className="w-full">
+                {groupedLogs.map((group) => (
+                  <AccordionItem key={group.key} value={group.key} className="border rounded-lg overflow-hidden mb-4">
+                    <AccordionTrigger className="hover:no-underline bg-slate-50 hover:bg-slate-100 px-4 py-3">
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-3">
+                          <Calendar className="h-5 w-5 text-blue-500" />
+                          <span className="font-medium">{group.key}</span>
+                          <Badge variant="secondary" className="ml-2">
+                            {group.logs.length} 条
                           </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={actionColors[log.action] || ''}>
-                            {log.action}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="max-w-[300px] truncate text-sm text-muted-foreground">
-                            {typeof details === 'object'
-                              ? details.message || JSON.stringify(details)
-                              : details}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Globe className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm font-mono">
-                              {log.ip_address || '-'}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Monitor className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <span className="text-sm truncate max-w-[160px]" title={log.user_agent || ''}>
-                              {log.user_agent
-                                ? log.user_agent.split(')').pop()?.trim().split(' ')[0] || log.user_agent.substring(0, 30)
-                                : '-'}
-                            </span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
+                        </div>
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="p-0">
+                      <div className="border-t">
+                        <Table>
+                          <TableHeader className="bg-slate-50/50">
+                            <TableRow>
+                              <TableHead className="w-[160px]">时间</TableHead>
+                              <TableHead className="w-[100px]">用户</TableHead>
+                              <TableHead className="w-[120px]">模块</TableHead>
+                              <TableHead className="w-[100px]">操作</TableHead>
+                              <TableHead>详情</TableHead>
+                              <TableHead className="w-[140px]">IP地址</TableHead>
+                              <TableHead className="w-[200px]">设备信息</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {group.logs.map((log) => {
+                              const details = parseDetails(log.details);
+                              return (
+                                <TableRow key={log.id}>
+                                  <TableCell className="text-sm">
+                                    {formatDateTime(log.created_at)}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-2">
+                                      <User className="h-4 w-4 text-muted-foreground" />
+                                      <span className="font-medium">{log.user_name}</span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline">
+                                      {moduleLabels[log.module] || log.module}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge className={actionColors[log.action] || ''}>
+                                      {log.action}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="max-w-[300px] truncate text-sm text-muted-foreground">
+                                      {typeof details === 'object'
+                                        ? details.message || JSON.stringify(details)
+                                        : details}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-2">
+                                      <Globe className="h-4 w-4 text-muted-foreground" />
+                                      <span className="text-sm font-mono">
+                                        {log.ip_address || '-'}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center gap-2">
+                                      <Monitor className="h-4 w-4 text-muted-foreground shrink-0" />
+                                      <span className="text-sm truncate max-w-[160px]" title={log.user_agent || ''}>
+                                        {log.user_agent
+                                          ? log.user_agent.split(')').pop()?.trim().split(' ')[0] || log.user_agent.substring(0, 30)
+                                          : '-'}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            )}
           </div>
 
           {/* 分页 */}

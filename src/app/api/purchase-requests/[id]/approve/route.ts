@@ -157,10 +157,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         parseInt(id)
       );
       
+      // 获取当前本地时间
+      const now = new Date();
+      const localTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      
       // 写入通知中心记录
       const notificationResult = db.prepare(`
-        INSERT INTO notifications (title, content, sender_id, sender_name, receiver_id, receiver_name, type, email_sent, email_error)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO notifications (title, content, sender_id, sender_name, receiver_id, receiver_name, type, email_sent, email_error, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         '请购单财务终审通知',
         `${user.name} 已通过请购单「${purchaseRequest.title}」，金额 ¥${purchaseRequest.total_amount}，请进行财务终审。`,
@@ -170,7 +174,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         admin.name,
         'approval',
         0,
-        null
+        null,
+        localTime
       );
       const notificationId = notificationResult.lastInsertRowid as number;
       

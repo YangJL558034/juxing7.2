@@ -617,8 +617,6 @@ export default function UserManagePage() {
               </TableHeader>
               <TableBody>
                 {filteredUsers.map(user => {
-                  const userDepartment = departments.find(d => d.id === user.department_id);
-                  const deptName = user.department || userDepartment?.name || '-';
                   const userPosition = positions.find(p => p.id === user.position_id);
                   const userManager = users.find(u => u.id === user.manager_id);
                   return (
@@ -630,7 +628,7 @@ export default function UserManagePage() {
                         {user.role === 'admin' ? '管理员' : user.role === 'dept_manager' ? '部门经理' : '普通用户'}
                       </Badge>
                     </TableCell>
-                    <TableCell>{deptName}</TableCell>
+                    <TableCell>{user.department || '-'}</TableCell>
                     <TableCell>{userPosition?.name || '-'}</TableCell>
                     <TableCell>{userManager?.name || '-'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{user.email || '-'}</TableCell>

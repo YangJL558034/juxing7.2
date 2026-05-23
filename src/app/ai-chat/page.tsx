@@ -15,12 +15,20 @@ interface Message {
   timestamp: Date;
 }
 
-export default function AIChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: `👋 您好！我是您的智能助手。
+interface AIChatPageProps {
+  user?: {
+    id: number;
+    username: string;
+    name: string;
+    role: string;
+    department?: string;
+  };
+}
+
+const welcomeMessage: Message = {
+  id: '1',
+  role: 'assistant',
+  content: `👋 您好！我是您的智能助手。
 
 我可以帮您：
 • 📝 生成和管理注册码
@@ -30,14 +38,89 @@ export default function AIChatPage() {
 • 🏢 查看组织架构
 
 请直接用自然语言告诉我您需要什么帮助，或者点击下方的快捷问题快速开始！`,
-      timestamp: new Date(),
-    },
-  ]);
+  timestamp: new Date(),
+};
+
+export default function AIChatPage({ user }: AIChatPageProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 调试：打印用户信息
+  console.log('AIChatPage - 用户信息:', user);
+
+  // 加载历史聊天记录
+  useEffect(() => {
+    console.log('AIChatPage - useEffect触发，user.id:', user?.id);
+    if (user?.id) {
+      loadChatHistory();
+    } else {
+      console.log('AIChatPage - 无用户信息，显示欢迎消息');
+      setMessages([welcomeMessage]);
+      setLoadingHistory(false);
+    }
+  }, [user?.id]);
+
+  // 加载历史聊天记录
+  const loadChatHistory = async () => {
+    if (!user?.id) return;
+    
+    console.log('AIChatPage - 开始加载聊天记录，userId:', user.id);
+    try {
+      const res = await fetch(`/api/chat/messages?userId=${user.id}`);
+      console.log('AIChatPage - 获取聊天记录响应状态:', res.status);
+      const data = await res.json();
+      console.log('AIChatPage - 获取聊天记录响应数据:', data);
+      
+      if (data.success && data.messages.length > 0) {
+        const historyMessages: Message[] = data.messages.map((msg: any) => ({
+          id: msg.id.toString(),
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+          timestamp: new Date(msg.created_at),
+        }));
+        console.log('AIChatPage - 解析历史消息:', historyMessages);
+        setMessages(historyMessages);
+      } else {
+        console.log('AIChatPage - 无历史记录，显示欢迎消息');
+        setMessages([welcomeMessage]);
+      }
+    } catch (error) {
+      console.error('AIChatPage - 加载聊天记录失败:', error);
+      setMessages([welcomeMessage]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // 保存聊天消息
+  const saveMessage = async (role: 'user' | 'assistant', content: string) => {
+    if (!user?.id) {
+      console.log('AIChatPage - 无法保存消息：无用户信息');
+      return;
+    }
+    
+    console.log('AIChatPage - 开始保存消息:', { userId: user.id, role, content: content.substring(0, 50) });
+    try {
+      const res = await fetch('/api/chat/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          role,
+          content,
+        }),
+      });
+      const data = await res.json();
+      console.log('AIChatPage - 保存消息响应:', data);
+    } catch (error) {
+      console.error('AIChatPage - 保存聊天记录失败:', error);
+    }
+  };
 
   // 自动滚动到最新消息
   useEffect(() => {
@@ -60,6 +143,9 @@ export default function AIChatPage() {
     setLoading(true);
 
     try {
+      // 保存用户消息
+      await saveMessage('user', userMessage.content);
+
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,6 +162,9 @@ export default function AIChatPage() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // 保存助手消息
+      await saveMessage('assistant', assistantMessage.content);
     } catch (error) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -84,6 +173,9 @@ export default function AIChatPage() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
+
+      // 保存错误消息
+      await saveMessage('assistant', errorMessage.content);
     } finally {
       setLoading(false);
     }
@@ -110,12 +202,11 @@ export default function AIChatPage() {
   };
 
   // 清空对话
-  const handleClear = () => {
-    setMessages([
-      {
-        id: '1',
-        role: 'assistant',
-        content: `👋 对话已清空！
+  const handleClear = async () => {
+    const newWelcomeMessage: Message = {
+      id: '1',
+      role: 'assistant',
+      content: `👋 对话已清空！
 
 我可以帮您：
 • 📝 生成和管理注册码
@@ -125,9 +216,21 @@ export default function AIChatPage() {
 • 🏢 查看组织架构
 
 请告诉我您需要什么帮助？`,
-        timestamp: new Date(),
-      },
-    ]);
+      timestamp: new Date(),
+    };
+
+    setMessages([newWelcomeMessage]);
+
+    // 清空数据库中的记录
+    if (user?.id) {
+      try {
+        await fetch(`/api/chat/messages?userId=${user.id}`, {
+          method: 'DELETE',
+        });
+      } catch (error) {
+        console.error('清空聊天记录失败:', error);
+      }
+    }
   };
 
   // 复制消息内容
@@ -172,61 +275,70 @@ export default function AIChatPage() {
         <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
           <ScrollArea className="flex-1 p-4">
             <div className="space-y-4">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex gap-3 ${
-                    message.role === 'user' ? 'flex-row-reverse' : ''
-                  }`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      message.role === 'user'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    {message.role === 'user' ? (
-                      <User className="w-4 h-4" />
-                    ) : (
-                      <Bot className="w-4 h-4" />
-                    )}
-                  </div>
-
-                  <div
-                    className={`max-w-[80%] rounded-lg p-3 ${
-                      message.role === 'user'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-slate-100 text-slate-800'
-                    }`}
-                  >
-                    <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                    <div
-                      className={`flex items-center justify-end gap-2 mt-2 ${
-                        message.role === 'user' ? 'text-blue-100' : 'text-slate-400'
-                      }`}
-                    >
-                      <span className="text-xs">{formatTime(message.timestamp)}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={`h-6 w-6 p-0 ${
-                          message.role === 'user' ? 'text-blue-100 hover:text-white' : ''
-                        }`}
-                        onClick={() => handleCopy(message)}
-                      >
-                        {copiedId === message.id ? (
-                          <Check className="w-3 h-3" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
-                        )}
-                      </Button>
-                    </div>
+              {loadingHistory ? (
+                <div className="flex items-center justify-center h-full py-8">
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>加载历史记录中...</span>
                   </div>
                 </div>
-              ))}
+              ) : (
+                messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex gap-3 ${
+                      message.role === 'user' ? 'flex-row-reverse' : ''
+                    }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        message.role === 'user'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {message.role === 'user' ? (
+                        <User className="w-4 h-4" />
+                      ) : (
+                        <Bot className="w-4 h-4" />
+                      )}
+                    </div>
 
-              {loading && (
+                    <div
+                      className={`max-w-[80%] rounded-lg p-3 ${
+                        message.role === 'user'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-slate-100 text-slate-800'
+                      }`}
+                    >
+                      <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                      <div
+                        className={`flex items-center justify-end gap-2 mt-2 ${
+                          message.role === 'user' ? 'text-blue-100' : 'text-slate-400'
+                        }`}
+                      >
+                        <span className="text-xs">{formatTime(message.timestamp)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={`h-6 w-6 p-0 ${
+                            message.role === 'user' ? 'text-blue-100 hover:text-white' : ''
+                          }`}
+                          onClick={() => handleCopy(message)}
+                        >
+                          {copiedId === message.id ? (
+                            <Check className="w-3 h-3" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+
+              {!loadingHistory && loading && (
                 <div className="flex gap-3">
                   <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center">
                     <Bot className="w-4 h-4" />
@@ -259,40 +371,7 @@ export default function AIChatPage() {
                       setInput(q.command);
                       // 自动发送
                       setTimeout(() => {
-                        const userMessage: Message = {
-                          id: Date.now().toString(),
-                          role: 'user',
-                          content: q.command,
-                          timestamp: new Date(),
-                        };
-                        setMessages((prev) => [...prev, userMessage]);
-                        setInput('');
-                        setLoading(true);
-                        
-                        fetch('/api/generate', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ command: q.command }),
-                        })
-                          .then(res => res.json())
-                          .then(data => {
-                            const assistantMessage: Message = {
-                              id: (Date.now() + 1).toString(),
-                              role: 'assistant',
-                              content: data.message || data.result || '处理完成',
-                              timestamp: new Date(),
-                            };
-                            setMessages((prev) => [...prev, assistantMessage]);
-                          })
-                          .catch(() => {
-                            setMessages((prev) => [...prev, {
-                              id: (Date.now() + 1).toString(),
-                              role: 'assistant',
-                              content: '抱歉，服务暂时不可用，请稍后重试。',
-                              timestamp: new Date(),
-                            }]);
-                          })
-                          .finally(() => setLoading(false));
+                        handleSend();
                       }, 100);
                     }}
                   >

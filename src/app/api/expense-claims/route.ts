@@ -19,14 +19,20 @@ export async function GET(request: NextRequest) {
     const isApprovalCenter = url.searchParams.get('approval') === 'true';
     let claims;
     if (isApprovalCenter) {
-      // 审批中心：只能看到分配给自己审批的单据
-      // 管理员可以看到所有待审批和待财务终审的单据
+      // 审批中心/财务终审：
       if (user.role === 'admin') {
+        // 管理员：返回所有可能涉及财务终审的单据
         claims = db.prepare(`
-          SELECT ec.* FROM expense_claims ec
+          SELECT DISTINCT ec.* 
+          FROM expense_claims ec
+          LEFT JOIN approval_records ar ON ec.id = ar.doc_id AND ar.doc_type = 'expense_claim'
           WHERE 
-            (ec.current_approver_id = ?) OR 
-            (ec.status = '一审已通过待二审' AND ec.current_approver_id IS NULL)
+            -- 待当前审批人审批的单据
+            ec.current_approver_id = ? 
+            -- 待财务终审的单据
+            OR (ec.status = '一审已通过待二审' AND ec.current_approver_id IS NULL)
+            -- 有财务终审记录的单据
+            OR ar.approval_order >= 2
           ORDER BY ec.created_at DESC
         `).all(userId);
       } else {
@@ -74,10 +80,14 @@ export async function POST(request: NextRequest) {
     // 发送站内消息（消息中心）
     query.messages.create.run(approver.id, '费用报销审批通知', `${user.name} 提交了费用报销单「${title}」，金额 ¥${total_amount || 0}，请您审批。`, 'approval', 'expense_claim', claimId);
     
+    // 获取当前本地时间
+    const now = new Date();
+    const localTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    
     // 写入通知中心记录
     const notificationResult = db.prepare(`
-      INSERT INTO notifications (title, content, sender_id, sender_name, receiver_id, receiver_name, type, email_sent, email_error)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO notifications (title, content, sender_id, sender_name, receiver_id, receiver_name, type, email_sent, email_error, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       '费用报销审批通知',
       `${user.name} 提交了费用报销单「${title}」，金额 ¥${total_amount || 0}，请您审批。`,
@@ -87,7 +97,8 @@ export async function POST(request: NextRequest) {
       approver.name,
       'approval',
       0,
-      null
+      null,
+      localTime
     );
     const notificationId = notificationResult.lastInsertRowid as number;
     

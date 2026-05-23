@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -17,6 +17,7 @@ import {
   Cell,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -26,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
@@ -52,14 +54,12 @@ interface Stats {
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchStats = async () => {
     try {
       setLoading(true);
+      setIsRefreshing(true);
       const res = await fetch('/api/stats');
       const data = await res.json();
       if (data.success) {
@@ -69,8 +69,21 @@ export function Dashboard() {
       console.error('获取统计数据失败:', error);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
+
+  // 自动刷新 - 每30秒更新一次数据
+  const { refreshNow } = useAutoRefresh({
+    enabled: true,
+    interval: 30000,
+    onRefresh: fetchStats,
+  });
+
+  // 初始加载
+  useEffect(() => {
+    fetchStats();
+  }, []);
 
   if (loading) {
     return (
@@ -94,7 +107,7 @@ export function Dashboard() {
 
   return (
     <div className="p-3 sm:p-4 lg:p-6">
-      {/* Filters */}
+      {/* Filters and Refresh */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 mb-6">
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <span className="text-sm text-slate-600 whitespace-nowrap">部门：</span>
@@ -120,6 +133,19 @@ export function Dashboard() {
               <SelectItem value="year">本年</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        
+        <div className="ml-auto">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={refreshNow}
+            disabled={isRefreshing}
+            className="gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            刷新
+          </Button>
         </div>
       </div>
 

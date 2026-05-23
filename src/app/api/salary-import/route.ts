@@ -6,23 +6,30 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 
-// 工资条 Excel 导入（支持车间和办公室两种格式）
+// 工资条Excel导入（支持车间和办公室两种格式）
 export async function POST(request: NextRequest) {
   try {
+    console.log('[Salary Import] 收到导入请求');
+    
     const token = request.cookies.get('auth_token')?.value;
     if (!token) {
+      console.log('[Salary Import] 未登录');
       return NextResponse.json({ error: '未登录' }, { status: 401 });
     }
 
     const decoded = await verifyToken(token);
     if (!decoded) {
+      console.log('[Salary Import] 登录已过期');
       return NextResponse.json({ error: '登录已过期' }, { status: 401 });
     }
 
     const body = await request.json();
     const { filePath, location } = body;
 
+    console.log('[Salary Import] 导入参数:', { filePath, location });
+
     if (!filePath || !existsSync(filePath)) {
+      console.error('[Salary Import] 文件不存在:', filePath);
       return NextResponse.json({ error: '文件不存在' }, { status: 400 });
     }
 
