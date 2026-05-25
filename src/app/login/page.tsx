@@ -18,7 +18,10 @@ export default function LoginPage() {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
         body: JSON.stringify({ username, password }),
         credentials: 'include',
       });
@@ -31,11 +34,9 @@ export default function LoginPage() {
         } else {
           localStorage.removeItem('rememberedUsername');
         }
-        // 保存 token 到 localStorage
         if (data.token) {
           localStorage.setItem('token', data.token);
         }
-        // 使用 window.location.href 强制刷新页面
         window.location.href = '/';
       } else {
         setError(data.error || '登录失败');

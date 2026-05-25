@@ -11,9 +11,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: '资产ID不能为空' }, { status: 400 });
     }
 
-    // 生成二维码 URL - 指向资产详情页面
-    const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000';
-    const assetUrl = `${domain}/asset/${id}`;
+    // 从请求头获取域名，优先使用自定义域名，否则从请求中获取
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+    const protocol = request.headers.get('x-forwarded-proto') || 'http';
+    
+    const assetUrl = `${protocol}://${host}/asset/${id}`;
 
     // 生成二维码图片 (Base64)
     const qrCodeDataUrl = await QRCode.toDataURL(assetUrl, {

@@ -172,9 +172,9 @@ export async function POST(request: NextRequest) {
           try {
             const pathModule = await import('path');
             const fs = await import('fs');
-            // fileUrl 格式为: /uploads/notifications/xxx.jpg
-            // 需要转换为完整路径: 项目目录/public/uploads/notifications/xxx.jpg
-            const filePath = pathModule.join(process.cwd(), 'public', attachment.fileUrl);
+            // fileUrl 格式为: /uploads/xxx.jpg
+            // 需要转换为完整路径: 项目目录/public/uploads/xxx.jpg
+            const filePath = pathModule.join(process.cwd(), 'public', attachment.fileUrl.replace(/^\//, ''));
             console.log(`[Notification] 检查附件文件路径: ${filePath}`);
             console.log(`[Notification] 文件是否存在: ${fs.existsSync(filePath)}`);
             

@@ -18,7 +18,10 @@ import {
   RotateCcw,
   Edit2,
   Plus,
-  Trash2
+  Trash2,
+  Maximize2,
+  Minimize2,
+  X
 } from 'lucide-react';
 import { logOperation, LogModules, LogActions } from '@/lib/log';
 
@@ -199,6 +202,7 @@ export default function EmployeeQueryPage() {
   const [signRecordId, setSignRecordId] = useState<number>(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const handleSearch = async () => {
     if (!name.trim() || !idCard.trim()) {
@@ -334,25 +338,54 @@ export default function EmployeeQueryPage() {
     return salaryRecords.filter(r => r.year === year && r.month_num === month);
   }, [selectedYear, selectedMonth, salaryRecords]);
 
+  // 全屏切换函数
+  const toggleFullscreen = async () => {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      await document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+
+  // 监听全屏状态变化
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   // 签字函数
   const openSignDialog = (recordId: number) => {
     setSignRecordId(recordId);
     setSignDialogOpen(true);
+    setIsFullscreen(false);
     setTimeout(() => {
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
+          const rect = canvas.getBoundingClientRect();
+          const dpr = window.devicePixelRatio || 1;
+          canvas.width = rect.width * dpr;
+          canvas.height = rect.height * dpr;
           ctx.fillStyle = '#fff';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.strokeStyle = '#000';
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 3;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
         }
       }
-    }, 100);
+    }, 150);
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
     setIsDrawing(true);
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -360,34 +393,44 @@ export default function EmployeeQueryPage() {
     if (!ctx) return;
     
     const rect = canvas.getBoundingClientRect();
-    let x, y;
+    let clientX, clientY;
     if ('touches' in e) {
-      x = e.touches[0].clientX - rect.left;
-      y = e.touches[0].clientY - rect.top;
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
     } else {
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
+      clientX = e.clientX;
+      clientY = e.clientY;
     }
+    
+    const x = (clientX - rect.left) * (canvas.width / rect.width);
+    const y = (clientY - rect.top) * (canvas.height / rect.height);
+    
     ctx.beginPath();
     ctx.moveTo(x, y);
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
+    e.preventDefault();
+    e.stopPropagation();
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
     const rect = canvas.getBoundingClientRect();
-    let x, y;
+    let clientX, clientY;
     if ('touches' in e) {
-      x = e.touches[0].clientX - rect.left;
-      y = e.touches[0].clientY - rect.top;
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
     } else {
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
+      clientX = e.clientX;
+      clientY = e.clientY;
     }
+    
+    const x = (clientX - rect.left) * (canvas.width / rect.width);
+    const y = (clientY - rect.top) * (canvas.height / rect.height);
+    
     ctx.lineTo(x, y);
     ctx.stroke();
   };
@@ -427,7 +470,7 @@ export default function EmployeeQueryPage() {
     const signature = canvas.toDataURL('image/png');
     
     try {
-      const response = await fetch('/api/work-hours-monthly/sign', {
+      const response = await fetch('/api/salary/sign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -438,7 +481,6 @@ export default function EmployeeQueryPage() {
       
       const result = await response.json();
       if (result.success) {
-        // 记录签字日志
         logOperation({
           module: LogModules.EMPLOYEE_QUERY,
           action: LogActions.SIGN,
@@ -446,6 +488,7 @@ export default function EmployeeQueryPage() {
             recordId: signRecordId,
             employeeName: employee?.name,
             month: `${selectedYear}-${selectedMonth}`,
+            type: 'salary',
           },
           userId: employee?.id,
           userName: employee?.name,
@@ -914,38 +957,64 @@ export default function EmployeeQueryPage() {
         )}
 
         {/* 签字对话框 */}
-        <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>
-          <DialogContent className="max-w-lg sm:max-w-xl">
-            <DialogHeader>
-              <DialogTitle className="text-lg sm:text-xl">确认签字</DialogTitle>
-              <DialogDescription className="text-sm sm:text-base">请在下方画板签名确认工资明细</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 sm:space-y-5">
-              <div className="border-2 border-dashed border-slate-300 rounded-lg p-3 sm:p-4 bg-white">
-                <canvas
-                  ref={canvasRef}
-                  width={450}
-                  height={200}
-                  className="w-full cursor-crosshair touch-none rounded"
-                  onMouseDown={startDrawing}
-                  onMouseMove={draw}
-                  onMouseUp={stopDrawing}
-                  onMouseLeave={stopDrawing}
-                  onTouchStart={startDrawing}
-                  onTouchMove={draw}
-                  onTouchEnd={stopDrawing}
-                />
+        {signDialogOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setSignDialogOpen(false)} />
+            <div className="relative z-10 w-full h-full max-w-2xl bg-white flex flex-col shadow-2xl">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+                <div>
+                  <h3 className="text-base font-semibold">确认签字</h3>
+                  <p className="text-xs text-slate-500">请在下方画板签名确认工资明细</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleFullscreen}
+                    className="p-2 rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors"
+                    title={isFullscreen ? '退出全屏' : '全屏'}
+                  >
+                    {isFullscreen ? <Minimize2 className="h-5 w-5 text-slate-600" /> : <Maximize2 className="h-5 w-5 text-slate-600" />}
+                  </button>
+                  <button
+                    onClick={() => setSignDialogOpen(false)}
+                    className="p-2 rounded-lg border border-slate-300 hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="h-5 w-5 text-slate-600" />
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-3 justify-end">
-                <Button variant="outline" size="lg" onClick={clearSignature}>
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  清除
-                </Button>
-                <Button size="lg" onClick={submitSignature}>确认签字</Button>
+              <div className="flex-1 flex flex-col p-4 bg-gray-50">
+                <div className="flex-1 border-2 border-dashed border-slate-300 rounded-lg bg-white overflow-hidden">
+                  <canvas
+                    ref={canvasRef}
+                    className="w-full h-full cursor-crosshair touch-none"
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={(e) => { e.preventDefault(); startDrawing(e); }}
+                    onTouchMove={(e) => { e.preventDefault(); draw(e); }}
+                    onTouchEnd={stopDrawing}
+                  />
+                </div>
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={clearSignature}
+                    className="flex-1 min-h-[48px] px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    清除
+                  </button>
+                  <button
+                    onClick={submitSignature}
+                    className="flex-1 min-h-[48px] px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                  >
+                    确认签字
+                  </button>
+                </div>
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+        )}
 
         {/* 底部说明 */}
         <div className="mt-6 text-center text-slate-400 text-sm">

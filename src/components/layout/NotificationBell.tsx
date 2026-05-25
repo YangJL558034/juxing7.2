@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Bell, Check, CheckCheck, Mail, MailX, X, FileText, Image, Download, Eye, Paperclip, Clock } from 'lucide-react';
+import { Bell, Check, CheckCheck, Mail, MailX, X, FileText, Image, Download, Eye, Paperclip, Clock, Trash2, Trash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -148,6 +148,33 @@ export function NotificationBell({ userId, userName }: NotificationBellProps) {
     setLoading(false);
   };
 
+  // 删除单个通知
+  const deleteNotification = async (notificationId: number) => {
+    try {
+      await fetch(`/api/notifications?id=${notificationId}`, {
+        method: 'DELETE',
+      });
+      fetchNotifications();
+    } catch (error) {
+      console.error('删除通知失败:', error);
+    }
+  };
+
+  // 一键清理所有通知
+  const clearAllNotifications = async () => {
+    if (!confirm('确定要删除所有通知吗？')) {
+      return;
+    }
+    try {
+      await fetch(`/api/notifications?receiverId=${userId}&deleteAll=true`, {
+        method: 'DELETE',
+      });
+      fetchNotifications();
+    } catch (error) {
+      console.error('清理通知失败:', error);
+    }
+  };
+
   // 查看通知详情
   const handleViewDetail = (notification: Notification) => {
     setSelectedNotification(notification);
@@ -272,18 +299,32 @@ export function NotificationBell({ userId, userName }: NotificationBellProps) {
       <DropdownMenuContent align="end" className="w-[480px] p-0 max-w-[95vw]">
         <div className="flex items-center justify-between p-3 border-b">
           <h3 className="font-semibold">通知中心</h3>
-          {unreadCount > 0 && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={markAllAsRead}
-              disabled={loading}
-              className="text-xs text-blue-500 hover:text-blue-600"
-            >
-              <CheckCheck className="h-3 w-3 mr-1" />
-              全部已读
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {unreadCount > 0 && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={markAllAsRead}
+                disabled={loading}
+                className="text-xs text-blue-500 hover:text-blue-600"
+              >
+                <CheckCheck className="h-3 w-3 mr-1" />
+                全部已读
+              </Button>
+            )}
+            {notifications.length > 0 && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={clearAllNotifications}
+                disabled={loading}
+                className="text-xs text-red-500 hover:text-red-600"
+              >
+                <Trash className="h-3 w-3 mr-1" />
+                一键清理
+              </Button>
+            )}
+          </div>
         </div>
         <ScrollArea className="h-[500px]">
           {notifications.length === 0 ? (
@@ -310,6 +351,18 @@ export function NotificationBell({ userId, userName }: NotificationBellProps) {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('确定要删除这条通知吗？')) {
+                            deleteNotification(notification.id);
+                          }
+                        }}
+                        className="float-right p-1 hover:bg-red-100 rounded transition-colors text-muted-foreground hover:text-red-500"
+                        title="删除通知"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
                       <div className="flex items-center gap-2">
                         <p className={cn(
                           'text-sm font-medium truncate',
@@ -474,6 +527,19 @@ export function NotificationBell({ userId, userName }: NotificationBellProps) {
         )}
         
         <DialogFooter>
+          <Button 
+            variant="outline" 
+            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+            onClick={() => {
+              if (selectedNotification && confirm('确定要删除这条通知吗？')) {
+                deleteNotification(selectedNotification.id);
+                setDetailDialogOpen(false);
+              }
+            }}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            删除通知
+          </Button>
           <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>
             关闭
           </Button>

@@ -44,7 +44,20 @@ interface EmailConfig {
   from_email: string;
 }
 
+interface ServerInfo {
+  platform: string;
+  platformName: string;
+  release: string;
+  arch: string;
+  hostname: string;
+  cpus: number;
+  totalMem: string;
+  freeMem: string;
+  uptime: string;
+}
+
 export function SettingsPage() {
+  const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [basicSettings, setBasicSettings] = useState({
     siteName: '聚星数据平台',
     siteDesc: '企业级客户关系管理系统',
@@ -90,6 +103,22 @@ export function SettingsPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
+
+  // 加载服务器信息
+  useEffect(() => {
+    const loadServerInfo = async () => {
+      try {
+        const res = await fetch('/api/system/info');
+        const data = await res.json();
+        if (data.success) {
+          setServerInfo(data.data);
+        }
+      } catch (error) {
+        console.error('Load server info error:', error);
+      }
+    };
+    loadServerInfo();
+  }, []);
 
   // 加载邮箱配置
   useEffect(() => {
@@ -745,7 +774,7 @@ export function SettingsPage() {
               <CardDescription>查看系统运行状态和版本信息</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-4">
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="text-gray-500">系统版本</span>
@@ -780,6 +809,32 @@ export function SettingsPage() {
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="text-gray-500">编程语言</span>
                     <span>TypeScript 5</span>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-gray-500">操作系统</span>
+                    <span className="font-medium text-gray-800">{serverInfo?.platformName || '加载中...'}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-gray-500">系统版本</span>
+                    <span>{serverInfo?.release || '加载中...'}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-gray-500">CPU 核心数</span>
+                    <span>{serverInfo?.cpus || '加载中...'} 核</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-gray-500">内存容量</span>
+                    <span>{serverInfo?.totalMem || '加载中...'}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-gray-500">可用内存</span>
+                    <span>{serverInfo?.freeMem || '加载中...'}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-gray-500">运行时长</span>
+                    <span>{serverInfo?.uptime || '加载中...'}</span>
                   </div>
                 </div>
               </div>

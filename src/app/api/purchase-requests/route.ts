@@ -43,12 +43,18 @@ export async function GET(request: NextRequest) {
           ORDER BY pr.created_at DESC
         `).all(userId) as Array<Record<string, unknown>>;
       } else {
-        // 普通用户：只能审批分配给自己的单据
+        // 普通用户：只能看到待审批的单据和自己审批过的已完成单据
         requests = db.prepare(`
-          SELECT pr.* FROM purchase_requests pr
-          WHERE pr.current_approver_id = ?
+          SELECT DISTINCT pr.* 
+          FROM purchase_requests pr
+          LEFT JOIN approval_records ar ON pr.id = ar.doc_id AND ar.doc_type = 'purchase_request'
+          WHERE 
+            -- 待当前用户审批的单据（状态为待审批）
+            (pr.current_approver_id = ? AND pr.status = '待审批')
+            -- 自己审批过的已完成单据（状态为已通过或已驳回）
+            OR (ar.approver_id = ? AND pr.status IN ('已通过', '已驳回'))
           ORDER BY pr.created_at DESC
-        `).all(userId) as Array<Record<string, unknown>>;
+        `).all(userId, userId) as Array<Record<string, unknown>>;
       }
     } else {
       // 请购单管理页面：只显示自己申请的单据

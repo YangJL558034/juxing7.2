@@ -17,10 +17,12 @@ export function generateCode(): string {
 
 // 保存验证码到数据库
 export function saveVerificationCode(email: string, code: string, type: string): void {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5分钟后过期
   db.prepare(`
-    INSERT INTO verification_codes (email, code, type, created_at)
-    VALUES (?, ?, ?, ?)
-  `).run(email, code, type, new Date().toISOString());
+    INSERT INTO verification_codes (email, code, type, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(email, code, type, now.toISOString(), expiresAt.toISOString());
 }
 
 // 验证验证码

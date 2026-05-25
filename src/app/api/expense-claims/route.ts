@@ -36,11 +36,18 @@ export async function GET(request: NextRequest) {
           ORDER BY ec.created_at DESC
         `).all(userId);
       } else {
+        // 普通用户：只能看到待审批的单据和自己审批过的已完成单据
         claims = db.prepare(`
-          SELECT ec.* FROM expense_claims ec
-          WHERE ec.current_approver_id = ?
+          SELECT DISTINCT ec.* 
+          FROM expense_claims ec
+          LEFT JOIN approval_records ar ON ec.id = ar.doc_id AND ar.doc_type = 'expense_claim'
+          WHERE 
+            -- 待当前用户审批的单据（状态为待审批）
+            (ec.current_approver_id = ? AND ec.status = '待审批')
+            -- 自己审批过的已完成单据（状态为已通过或已驳回）
+            OR (ar.approver_id = ? AND ec.status IN ('已通过', '已驳回'))
           ORDER BY ec.created_at DESC
-        `).all(userId);
+        `).all(userId, userId);
       }
     } else {
       claims = db.prepare(`SELECT * FROM expense_claims WHERE applicant_id = ? ORDER BY created_at DESC`).all(userId);

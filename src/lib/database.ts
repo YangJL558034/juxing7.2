@@ -1539,6 +1539,7 @@ export const query = {
     updateEmailSent: db.prepare('UPDATE notifications SET email_sent = 1 WHERE id = ?'),
     updateEmailError: db.prepare('UPDATE notifications SET email_error = ? WHERE id = ?'),
     delete: db.prepare('DELETE FROM notifications WHERE id = ?'),
+    deleteByReceiver: db.prepare('DELETE FROM notifications WHERE receiver_id = ?'),
   },
   operationLogs: {
     getAll: db.prepare('SELECT ol.*, u.name as user_name FROM operation_logs ol LEFT JOIN users u ON ol.user_id = u.id ORDER BY ol.created_at DESC LIMIT ? OFFSET ?'),

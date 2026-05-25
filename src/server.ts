@@ -25,11 +25,13 @@ app.prepare().then(() => {
     console.error(err);
     process.exit(1);
   });
-  server.listen(port, () => {
+  server.listen({ port, host: '::' }, () => {
     console.log(
       `> Server listening at http://${hostname}:${port} as ${
         dev ? 'development' : process.env.COZE_PROJECT_ENV
       }`,
     );
+    console.log(`> IPv4: http://localhost:${port}`);
+    console.log(`> IPv6: http://[::1]:${port}`);
   });
 });

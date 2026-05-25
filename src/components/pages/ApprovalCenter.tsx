@@ -132,21 +132,25 @@ export default function ApprovalCenter() {
         console.error('解析token失败:', e);
       }
     }
-    // 无论如何都尝试获取数据
+    // 无论如何都尝试获取数据（首次加载显示loading）
     setTimeout(() => {
-      fetchApprovalItems();
+      fetchApprovalItems(true);
     }, 100);
   }, []);
 
-  // 当用户ID变化时获取审批单据
+  // 当用户ID变化时获取审批单据（后台静默刷新）
   useEffect(() => {
-    // 即使currentUserId为0也尝试获取，因为后端会根据token验证
-    fetchApprovalItems();
+    // 避免初始化时重复调用
+    if (currentUserId !== 0) {
+      fetchApprovalItems();
+    }
   }, [currentUserId]);
 
-  const fetchApprovalItems = async () => {
-    setLoading(true);
-    setIsRefreshing(true);
+  const fetchApprovalItems = async (showLoading = false) => {
+    if (showLoading) {
+      setLoading(true);
+      setIsRefreshing(true);
+    }
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = {};
@@ -226,20 +230,22 @@ export default function ApprovalCenter() {
       console.error('获取审批列表失败:', error);
       alert('获取审批列表失败，请刷新页面重试');
     } finally {
-      setLoading(false);
-      setIsRefreshing(false);
+      if (showLoading) {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
     }
   };
 
-  // 自动刷新 - 每20秒更新一次审批数据
+  // 自动刷新 - 每20秒更新一次审批数据（后台静默刷新，不显示加载状态）
   const { refreshNow } = useAutoRefresh({
     enabled: true,
-    interval: 20000,
+    interval: 30000,
     onRefresh: fetchApprovalItems,
   });
 
   const handleRefresh = () => {
-    refreshNow();
+    fetchApprovalItems(true);
   };
 
   // 过滤后的待办和已办

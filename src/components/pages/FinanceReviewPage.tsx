@@ -151,9 +151,11 @@ export default function FinanceReviewPage() {
     });
   };
 
-  const fetchFinanceItems = async () => {
-    setLoading(true);
-    setIsRefreshing(true);
+  const fetchFinanceItems = async (showLoading = false) => {
+    if (showLoading) {
+      setLoading(true);
+      setIsRefreshing(true);
+    }
     try {
       const token = localStorage.getItem('token');
       const headers: HeadersInit = {};
@@ -220,20 +222,22 @@ export default function FinanceReviewPage() {
     } catch (error) {
       console.error('获取财务终审单据失败:', error);
     } finally {
-      setLoading(false);
-      setIsRefreshing(false);
+      if (showLoading) {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
     }
   };
 
-  // 自动刷新 - 每20秒更新一次财务数据
+  // 自动刷新 - 每30秒更新一次财务数据（后台静默刷新，不显示加载状态）
   const { refreshNow } = useAutoRefresh({
     enabled: true,
-    interval: 20000,
+    interval: 30000,
     onRefresh: fetchFinanceItems,
   });
 
   useEffect(() => {
-    fetchFinanceItems();
+    fetchFinanceItems(true);
   }, []);
 
   const statistics = {
@@ -377,7 +381,7 @@ export default function FinanceReviewPage() {
           <p className="text-slate-500 mt-1">处理待财务审核的单据</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button onClick={fetchFinanceItems} variant="outline">
+          <Button onClick={() => fetchFinanceItems(true)} variant="outline">
             <RefreshCw className="w-4 h-4 mr-2" />
             刷新
           </Button>

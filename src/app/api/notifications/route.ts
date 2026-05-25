@@ -188,13 +188,20 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const receiverId = searchParams.get('receiverId');
+    const deleteAll = searchParams.get('deleteAll') === 'true';
 
-    if (!id) {
-      return NextResponse.json({ success: false, error: '缺少通知ID' }, { status: 400 });
+    if (deleteAll && receiverId) {
+      // 删除指定接收者的所有通知
+      query.notifications.deleteByReceiver.run(parseInt(receiverId));
+      return NextResponse.json({ success: true, message: '所有通知已删除' });
+    } else if (id) {
+      // 删除单个通知
+      query.notifications.delete.run(parseInt(id));
+      return NextResponse.json({ success: true, message: '通知已删除' });
     }
 
-    query.notifications.delete.run(parseInt(id));
-    return NextResponse.json({ success: true, message: '通知已删除' });
+    return NextResponse.json({ success: false, error: '缺少必要参数' }, { status: 400 });
   } catch (error) {
     console.error('删除通知失败:', error);
     return NextResponse.json({ success: false, error: '删除通知失败' }, { status: 500 });

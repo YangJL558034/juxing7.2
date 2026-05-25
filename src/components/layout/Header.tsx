@@ -104,6 +104,10 @@ export function Header({ onToggleSidebar, user }: HeaderProps) {
       if (data.success) {
         toast({ title: '成功', description: '个人设置已更新' });
         setProfileDialogOpen(false);
+        // 更新本地用户信息
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('username', newUsername);
+        }
         // 发送通知
         if (user?.username !== newUsername) {
           await fetch('/api/notifications/send', {
@@ -117,8 +121,9 @@ export function Header({ onToggleSidebar, user }: HeaderProps) {
             })
           });
         }
-        // 刷新页面
-        router.refresh();
+        // 更新显示的用户名和姓名
+        setNewUsername(newUsername);
+        setNewName(newName);
       } else {
         toast({ title: '错误', description: data.error || '更新失败', variant: 'destructive' });
       }

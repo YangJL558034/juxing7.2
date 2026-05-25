@@ -1577,12 +1577,12 @@ export default function SalaryPage() {
 
               {/* 统计汇总 */}
               <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-                <h4 className="font-medium mb-3">年度汇总 ({searchYear}年 - {salaryLocation === 'office' ? '办公室' : '车间'})</h4>
+                <h4 className="font-medium mb-3">月度汇总 ({searchYear}年{parseInt(searchMonth)}月 - {salaryLocation === 'office' ? '办公室' : '车间'})</h4>
                 <div className="grid grid-cols-4 gap-4 text-center">
                   <div>
                     <div className="text-2xl font-bold text-blue-600">
                       ¥{(monthlyRecords.length > 0 
-                        ? monthlyRecords.filter(r => r.year === parseInt(searchYear) && r.location === (salaryLocation === 'office' ? '办公室' : '车间')).reduce((sum, r) => sum + r.actual_amount, 0)
+                        ? monthlyRecords.filter(r => r.year === parseInt(searchYear) && r.month_num === parseInt(searchMonth) && r.location === (salaryLocation === 'office' ? '办公室' : '车间')).reduce((sum, r) => sum + r.actual_amount, 0)
                         : 0).toLocaleString()}
                     </div>
                     <div className="text-sm text-muted-foreground">累计发放</div>
@@ -1590,7 +1590,7 @@ export default function SalaryPage() {
                   <div>
                     <div className="text-2xl font-bold text-orange-600">
                       {monthlyRecords.length > 0 
-                        ? monthlyRecords.filter(r => r.year === parseInt(searchYear) && r.location === (salaryLocation === 'office' ? '办公室' : '车间')).reduce((sum, r) => sum + r.weekday_overtime, 0)
+                        ? monthlyRecords.filter(r => r.year === parseInt(searchYear) && r.month_num === parseInt(searchMonth) && r.location === (salaryLocation === 'office' ? '办公室' : '车间')).reduce((sum, r) => sum + r.weekday_overtime, 0)
                         : 0}小时
                     </div>
                     <div className="text-sm text-muted-foreground">平时加班</div>
@@ -1598,14 +1598,14 @@ export default function SalaryPage() {
                   <div>
                     <div className="text-2xl font-bold text-green-600">
                       {monthlyRecords.length > 0 
-                        ? monthlyRecords.filter(r => r.year === parseInt(searchYear) && r.location === (salaryLocation === 'office' ? '办公室' : '车间')).reduce((sum, r) => sum + r.weekend_overtime, 0)
+                        ? monthlyRecords.filter(r => r.year === parseInt(searchYear) && r.month_num === parseInt(searchMonth) && r.location === (salaryLocation === 'office' ? '办公室' : '车间')).reduce((sum, r) => sum + r.weekend_overtime, 0)
                         : 0}小时
                     </div>
                     <div className="text-sm text-muted-foreground">周末加班</div>
                   </div>
                   <div>
                     <div className="text-2xl font-bold text-purple-600">
-                      {monthlyRecords.filter(r => r.year === parseInt(searchYear) && r.signature && r.location === (salaryLocation === 'office' ? '办公室' : '车间')).length}人
+                      {monthlyRecords.filter(r => r.year === parseInt(searchYear) && r.month_num === parseInt(searchMonth) && r.signature && r.location === (salaryLocation === 'office' ? '办公室' : '车间')).length}人
                     </div>
                     <div className="text-sm text-muted-foreground">已签字</div>
                   </div>

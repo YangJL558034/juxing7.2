@@ -69,25 +69,26 @@ export async function verifyToken(token: string): Promise<User | null> {
 
 // 设置认证 Cookie
 export function setAuthCookie(token: string): string {
-  // 检查是否是开发环境（HTTP），开发环境不使用 secure
   const isSecure = process.env.COZE_PROJECT_ENV === 'PROD';
   return serialize('auth_token', token, {
     httpOnly: true,
     secure: isSecure,
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    sameSite: isSecure ? ('none' as const) : ('lax' as const),
+    maxAge: 60 * 60 * 24 * 7,
     path: '/',
   });
 }
 
 // 清除认证 Cookie
 export function clearAuthCookie(): string {
+  const isSecure = process.env.COZE_PROJECT_ENV === 'PROD';
   return serialize('auth_token', '', {
     httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
+    secure: isSecure,
+    sameSite: 'none' as const,
     maxAge: 0,
     path: '/',
+    domain: undefined,
   });
 }
 

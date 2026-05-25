@@ -58,6 +58,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // 检查权限：
     // 1. 如果状态是"待审批"，只有分配的审批人可以审批
     // 2. 如果状态是"一审已通过待二审"，所有管理员都可以审批
+    // 3. 检查当前用户是否已经审批过该单据（防止连续点击）
+    const existingApproval = db.prepare(`
+      SELECT id FROM approval_records 
+      WHERE doc_type = ? AND doc_id = ? AND approver_id = ?
+    `).get('purchase_request', parseInt(id), userId);
+    
+    if (existingApproval) {
+      return NextResponse.json({ error: '您已经审批过该单据' }, { status: 403 });
+    }
+    
     let canApprove = false;
     if (purchaseRequest.status === '待审批') {
       canApprove = purchaseRequest.current_approver_id === userId;
