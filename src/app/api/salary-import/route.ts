@@ -92,41 +92,47 @@ export async function POST(request: NextRequest) {
         const name = String(row[1]).trim();
         if (!name || name === '姓名' || name === '合计') continue;
 
-        // 办公室工资表列映射
+        // 办公室工资表列映射 - 2026年4月新格式
+        // 序号(0) 姓名(1) 代码(2) 部门(3) 基本工资(4) 正班应出勤天数D(5) 当月周六天数D(6) 
+        // 正班实际出勤天数D(7) 本月已休带薪假D(8) 平时加班时间H(9) 周未加班时间D(10) 法定日加班D(11)
+        // 实际出勤工资(12) 本月法定日休假工资(13) 平时加班工资(14) 周未加班工资(15) 法定日加班工资(16)
+        // 绩效奖金(17) 用餐补贴(18) 住房补贴(19) 交通补贴(20) 香港补贴100元/天(21)
+        // 扣款(22) 其他扣款(23) 水电费(24) 应领工资(25) 公积金(26) 社会保险(27) 社保养老调(28)
+        // 社保补贴(29) 税前工资(30) 个人所得税(31) 实发工资(32) 签名(33) 银行卡号(34) 备注(35)
         const record = {
           name,
-          department: row[4] || '',                        // 部门
-          baseSalary: parseFloat(row[5]) || 0,            // 基本工资
-          shouldAttendDays: parseFloat(row[6]) || 22,     // 正班应出勤天数D
-          saturdayDays: parseFloat(row[7]) || 4,          // 当月周六天数D
-          normalAttendanceDays: parseFloat(row[8]) || 0,  // 正班实际出勤天数D
-          paidLeaveDays: parseFloat(row[9]) || 0,         // 本月已休带薪假D
-          weekdayOvertime: parseFloat(row[10]) || 0,      // 平时加班时间H
-          weekendOvertime: parseFloat(row[11]) || 0,      // 周末加班时间D
-          holidayOvertime: parseFloat(row[12]) || 0,      // 法定日加班D
-          normalPay: parseFloat(row[13]) || 0,            // 实际出勤工资
-          holidayVacationPay: parseFloat(row[14]) || 0,   // 本月法定日休假工资
-          weekdayOvertimePay: parseFloat(row[15]) || 0,   // 平时加班工资
-          weekendOvertimePay: parseFloat(row[16]) || 0,   // 周末加班工资
-          holidayOvertimePay: parseFloat(row[17]) || 0,   // 法定日加班工资
-          performanceBonus: parseFloat(row[18]) || 0,     // 绩效奖金（浮动）
-          mealSubsidy: parseFloat(row[19]) || 0,          // 用餐补贴
-          housingSubsidy: parseFloat(row[20]) || 0,       // 住房补贴
-          transportSubsidy: parseFloat(row[21]) || 0,     // 交通补贴
-          subsidy: parseFloat(row[22]) || 0,              // 补贴
-          fine: parseFloat(row[23]) || 0,                 // 罚款（负数）
-          otherDeduct: parseFloat(row[24]) || 0,          // 其他扣款（负数）
-          utilities: parseFloat(row[25]) || 0,            // 水电费
-          totalPayable: parseFloat(row[26]) || 0,         // 应领工资
-          housingFund: parseFloat(row[27]) || 0,          // 公积金
-          socialInsurance: parseFloat(row[28]) || 0,      // 社会保险
-          socialSecurityAdjust: parseFloat(row[29]) || 0, // 社保养老调
-          socialSecuritySubsidy: parseFloat(row[30]) || 0,// 社保补贴
-          preTaxSalary: parseFloat(row[31]) || 0,         // 税前工资
-          incomeTax: parseFloat(row[32]) || 0,            // 个人所得税
-          actualAmount: parseFloat(row[33]) || 0,         // 实发工资
-          bankAccount: String(row[35] || '').split('（')[0], // 银行卡号
-          remark: row[36] || '',                          // 备注
+          department: row[3] || '',
+          baseSalary: parseFloat(row[4]) || 0,
+          shouldAttendDays: parseFloat(row[5]) || 22,
+          saturdayDays: parseFloat(row[6]) || 4,
+          normalAttendanceDays: parseFloat(row[7]) || 0,
+          paidLeaveDays: parseFloat(row[8]) || 0,
+          weekdayOvertime: parseFloat(row[9]) || 0,
+          weekendOvertime: parseFloat(row[10]) || 0,
+          holidayOvertime: parseFloat(row[11]) || 0,
+          normalPay: parseFloat(row[12]) || 0,
+          holidayVacationPay: parseFloat(row[13]) || 0,
+          weekdayOvertimePay: parseFloat(row[14]) || 0,
+          weekendOvertimePay: parseFloat(row[15]) || 0,
+          holidayOvertimePay: parseFloat(row[16]) || 0,
+          performanceBonus: parseFloat(row[17]) || 0,
+          mealSubsidy: parseFloat(row[18]) || 0,
+          housingSubsidy: parseFloat(row[19]) || 0,
+          transportSubsidy: parseFloat(row[20]) || 0,
+          subsidy: parseFloat(row[21]) || 0,
+          fine: parseFloat(row[22]) || 0,
+          otherDeduct: parseFloat(row[23]) || 0,
+          utilities: parseFloat(row[24]) || 0,
+          totalPayable: parseFloat(row[25]) || 0,
+          housingFund: parseFloat(row[26]) || 0,
+          socialInsurance: parseFloat(row[27]) || 0,
+          socialSecurityAdjust: parseFloat(row[28]) || 0,
+          socialSecuritySubsidy: parseFloat(row[29]) || 0,
+          preTaxSalary: parseFloat(row[30]) || 0,
+          incomeTax: parseFloat(row[31]) || 0,
+          actualAmount: parseFloat(row[32]) || 0,
+          bankAccount: String(row[34] || '').split(/[（(]/)[0],
+          remark: row[35] || '',
         };
 
         // 查找员工，只导入已存在的员工
