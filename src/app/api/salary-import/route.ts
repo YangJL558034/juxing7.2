@@ -63,6 +63,17 @@ export async function POST(request: NextRequest) {
     
     console.log('检测格式:', isOfficeFormat ? '办公室工资表' : '车间工资表', '表头:', allHeaderText.substring(0, 100));
 
+    // 验证格式与选择的地点是否匹配
+    if (location === '办公室' && !isOfficeFormat) {
+      console.error('[Salary Import] 格式不匹配：选择了"办公室"但Excel是车间格式');
+      return NextResponse.json({ error: '格式不匹配：您选择了"办公室"但上传的是车间工资表，请选择正确的地点或上传正确的文件' }, { status: 400 });
+    }
+    
+    if (location === '车间' && isOfficeFormat) {
+      console.error('[Salary Import] 格式不匹配：选择了"车间"但Excel是办公室格式');
+      return NextResponse.json({ error: '格式不匹配：您选择了"车间"但上传的是办公室工资表，请选择正确的地点或上传正确的文件' }, { status: 400 });
+    }
+
     let year = body.year || new Date().getFullYear();
     let month = body.month || new Date().getMonth() + 1;
     
@@ -135,12 +146,12 @@ export async function POST(request: NextRequest) {
           remark: row[35] || '',
         };
 
-        // 查找员工，只导入已存在的员工
-        let employee = db.prepare('SELECT * FROM employees WHERE name = ?').get(name) as any;
+        // 查找员工，只导入已存在的员工（且部门/地点匹配）
+        let employee = db.prepare('SELECT * FROM employees WHERE name = ? AND location = ?').get(name, location) as any;
         
         if (!employee) {
-          // 员工不存在，跳过此记录
-          console.log(`员工不存在，跳过: ${name}`);
+          // 员工不存在或部门不匹配，跳过此记录
+          console.log(`员工不存在或部门不匹配(location=${location})，跳过: ${name}`);
           skippedEmployees.push(name);
           continue;
         }
@@ -303,12 +314,12 @@ export async function POST(request: NextRequest) {
           actualAmount: parseFloat(row[44]) || 0,
         };
 
-        // 查找员工，只导入已存在的员工
-        let employee = db.prepare('SELECT * FROM employees WHERE name = ?').get(name) as any;
+        // 查找员工，只导入已存在的员工（且部门/地点匹配）
+        let employee = db.prepare('SELECT * FROM employees WHERE name = ? AND location = ?').get(name, location) as any;
         
         if (!employee) {
-          // 员工不存在，跳过此记录
-          console.log(`员工不存在，跳过: ${name}`);
+          // 员工不存在或部门不匹配，跳过此记录
+          console.log(`员工不存在或部门不匹配(location=${location})，跳过: ${name}`);
           skippedEmployees.push(name);
           continue;
         }
