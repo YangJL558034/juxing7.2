@@ -951,8 +951,8 @@ export default function EmployeeQueryPage() {
                                 )}
                                 {(record.weekend_overtime ?? 0) > 0 && (
                                   <div className="flex justify-between text-sm">
-                                    <span className="text-slate-500">周未加班时间</span>
-                                    <span className="text-slate-800">{record.weekend_overtime}天</span>
+                                    <span className="text-slate-500">周末加班时间</span>
+                                    <span className="text-slate-800">{record.weekend_overtime}小时</span>
                                   </div>
                                 )}
                                 {(record.holiday_overtime ?? 0) > 0 && (
