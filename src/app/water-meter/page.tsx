@@ -15,8 +15,9 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { WaterMeterRoomOption } from '@/types/water-meter';
+import { chinaToday } from '@/lib/china-time';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = chinaToday;
 
 function displayNumber(value?: number | null) {
   return value === null || value === undefined ? '-' : String(value);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/database';
 import { sendEmail } from '@/lib/email';
+import { chinaNowSql } from '@/lib/china-time';
 
 interface User {
   id: number;
@@ -109,8 +110,7 @@ export async function POST(request: NextRequest) {
 
     for (const receiver of receivers) {
       // 获取当前本地时间
-      const now = new Date();
-      const localTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      const localTime = chinaNowSql();
       
       // 准备附件信息
       const attachmentFile = attachment?.fileUrl || null;

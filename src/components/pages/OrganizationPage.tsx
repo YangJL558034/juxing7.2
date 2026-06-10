@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatChinaDateTime } from '@/lib/china-time';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Search, Edit, Trash2, Users, Building2, UserCog } from 'lucide-react';
 
@@ -381,7 +382,7 @@ export default function OrganizationPage() {
                       <TableCell className="font-medium">{dept.name}</TableCell>
                       <TableCell>{dept.parent_name || '-'}</TableCell>
                       <TableCell>{dept.manager_name || '-'}</TableCell>
-                      <TableCell>{new Date(dept.created_at).toLocaleString()}</TableCell>
+                      <TableCell>{formatChinaDateTime(dept.created_at)}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button size="sm" variant="ghost" onClick={() => openDeptDialog(dept)}>
@@ -458,7 +459,7 @@ export default function OrganizationPage() {
                       </TableCell>
                       <TableCell>{pos.approval_limit > 0 ? `¥${pos.approval_limit.toLocaleString()}` : '-'}</TableCell>
                       <TableCell>{pos.description || '-'}</TableCell>
-                      <TableCell>{new Date(pos.created_at).toLocaleString()}</TableCell>
+                      <TableCell>{formatChinaDateTime(pos.created_at)}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button size="sm" variant="ghost" onClick={() => openPositionDialog(pos)}>

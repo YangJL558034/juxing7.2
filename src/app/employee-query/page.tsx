@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { formatChinaDate } from '@/lib/china-time';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
@@ -1357,7 +1358,7 @@ export default function EmployeeQueryPage() {
                                   <img src={record.signature} alt="签字" className="h-12 rounded-lg border border-stone-200 bg-white" />
                                   <div className="text-xs text-slate-500">
                                     <p className="font-medium text-emerald-700">已签字确认</p>
-                                    {record.signature_time && <p>{new Date(record.signature_time).toLocaleDateString()}</p>}
+                                    {record.signature_time && <p>{formatChinaDate(record.signature_time)}</p>}
                                   </div>
                                 </div>
                               ) : (

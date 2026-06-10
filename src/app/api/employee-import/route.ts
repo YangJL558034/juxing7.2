@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { query } from '@/lib/database';
+import { resolveEmployeeSalaryLocation } from '@/lib/employee-location';
 
 export async function POST(request: NextRequest) {
   try {
@@ -93,6 +94,7 @@ export async function POST(request: NextRequest) {
     console.log('[Employee Import] 开始导入到数据库');
     for (const emp of employees) {
       try {
+        const employeeLocation = resolveEmployeeSalaryLocation(emp.department, location);
         // 检查是否已存在（通过姓名+身份证）
         const existing = query.getEmployeeByNameAndIdCard.get(emp.name, emp.id_card) as { id: number } | undefined;
         
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest) {
             '',
             0,
             emp.status,
-            location,
+            employeeLocation,
             existing.id
           );
           updated++;
@@ -121,7 +123,7 @@ export async function POST(request: NextRequest) {
             0,
             emp.status,
             '',
-            location,
+            employeeLocation,
             ''  // hire_date
           );
           imported++;

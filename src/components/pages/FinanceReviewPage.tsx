@@ -28,6 +28,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { formatChinaDateTime, parseChinaTime } from '@/lib/china-time';
 
 interface ApprovalRecord {
   id: number;
@@ -70,7 +71,7 @@ export default function FinanceReviewPage() {
 
   // 格式化年月分组
   const formatYearMonth = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseChinaTime(dateStr) || new Date(dateStr);
     return `${date.getFullYear()}年${date.getMonth() + 1}月`;
   };
 
@@ -181,7 +182,7 @@ export default function FinanceReviewPage() {
         department: item.department || '',
         amount: Number(item.total_amount) || 0,
         status: item.status || '待审批',
-        createTime: item.created_at ? new Date(item.created_at).toLocaleString() : '',
+        createTime: item.created_at ? formatChinaDateTime(item.created_at) : '',
         docNo: item.request_no,
         items: item.items ? JSON.parse(item.items) : undefined,
         approvals: item.approvals || [],
@@ -199,7 +200,7 @@ export default function FinanceReviewPage() {
         department: item.department || '',
         amount: Number(item.total_amount) || 0,
         status: item.status || '待审批',
-        createTime: item.created_at ? new Date(item.created_at).toLocaleString() : '',
+        createTime: item.created_at ? formatChinaDateTime(item.created_at) : '',
         docNo: item.claim_no,
         items: item.items ? JSON.parse(item.items) : undefined,
         approvals: item.approvals || [],
@@ -845,7 +846,7 @@ export default function FinanceReviewPage() {
                             {getActionText(step.action)}
                           </Badge>
                         </div>
-                        <p className="text-sm text-slate-500">{step.created_at ? new Date(step.created_at).toLocaleString() : ''}</p>
+                        <p className="text-sm text-slate-500">{step.created_at ? formatChinaDateTime(step.created_at) : ''}</p>
                         {step.comment && (
                           <p className="text-sm text-slate-600 mt-1">审批意见: {step.comment}</p>
                         )}

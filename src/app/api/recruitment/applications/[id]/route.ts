@@ -45,7 +45,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     db.prepare(`
       UPDATE recruitment_applications
-      SET status = ?, updated_at = CURRENT_TIMESTAMP
+      SET status = ?, updated_at = datetime('now', '+8 hours')
       WHERE id = ?
     `).run(status, id);
 

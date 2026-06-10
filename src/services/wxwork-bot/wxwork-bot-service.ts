@@ -15,6 +15,7 @@
 import WebSocket from 'ws';
 import https from 'https';
 import http from 'http';
+import { formatChinaDateTime } from '@/lib/china-time';
 
 interface Config {
   botId: string;
@@ -50,7 +51,7 @@ function loadConfig(): Config {
 }
 
 function log(level: string, message: string, ...args: any[]) {
-  const timestamp = new Date().toLocaleString('zh-CN');
+  const timestamp = formatChinaDateTime(new Date());
   console.log(`[${timestamp}] [${level}] ${message}`, ...args);
 }
 

@@ -38,6 +38,7 @@ import {
   Briefcase,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatChinaTime } from '@/lib/china-time';
 import { navMenuItems, NavMenuItem } from '@/data/mockData';
 import { Button } from '@/components/ui/button';
 import {
@@ -407,7 +408,7 @@ export function Sidebar({
 
   // AI格式化时间
   const formatAiTime = (date: Date) => {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    return formatChinaTime(date);
   };
 
   const filteredMenuItems = navMenuItems.filter(item => {

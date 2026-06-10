@@ -25,15 +25,35 @@ function text(value: unknown): string {
 }
 
 function formatDate(value?: string | null): string {
-  if (!value) return '';
-  return value.includes('T') ? value.split('T')[0] : value.slice(0, 10);
+  const raw = text(value);
+  if (!raw) return '';
+
+  const localDate = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+\d{1,2}:\d{2}:\d{2})?$/);
+  if (localDate) {
+    return `${localDate[1]}-${localDate[2].padStart(2, '0')}-${localDate[3].padStart(2, '0')}`;
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    const parts = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(parsed);
+    const getPart = (type: string) => parts.find((part) => part.type === type)?.value || '';
+    return `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+  }
+
+  return raw.slice(0, 10);
 }
 
 function formatChineseDate(value?: string | null): string {
   const normalized = formatDate(value);
-  if (!normalized) return '      年   月   日';
+  if (!normalized) return '____年__月__日';
   const [year, month, day] = normalized.split('-');
-  return `${year} 年 ${Number(month)} 月 ${Number(day)} 日`;
+  if (!year || !month || !day) return normalized;
+  return `${year}年${month.padStart(2, '0')}月${day.padStart(2, '0')}日`;
 }
 
 function checkbox(checked: boolean): string {
@@ -44,7 +64,7 @@ function optionLine(options: string[], selected: string): string {
   return options.map((option) => `${checkbox(selected === option)} ${option}`).join('   ');
 }
 
-function money(value: string): string {
+function money(value?: string | null): string {
   const amount = text(value);
   if (!amount) return '';
   return amount.includes('元') ? amount : `${amount} 元/月`;
@@ -190,15 +210,6 @@ function cleanParagraphProperties(value: string): string {
   return value.replace(/<w:numPr>[\s\S]*?<\/w:numPr>/g, '');
 }
 
-function signatureParagraphProperties(value: string): string {
-  const cleaned = cleanParagraphProperties(value);
-  if (cleaned.includes('<w:spacing ')) {
-    return cleaned.replace(/<w:spacing\b[^>]*\/>/, '<w:spacing w:line="460" w:lineRule="atLeast"/>');
-  }
-
-  return cleaned.replace('</w:pPr>', '<w:spacing w:line="460" w:lineRule="atLeast"/></w:pPr>');
-}
-
 function runXml(value: string, rPr: string): string {
   const parts = value.split('\n');
   const content = parts.map((part, index) => {
@@ -293,6 +304,46 @@ function removeParagraphContaining(documentXml: string, needles: string[]): stri
   });
 }
 
+function addPageBreakBeforeParagraphContaining(documentXml: string, needles: string[]): string {
+  return documentXml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraph) => {
+    const hasAllNeedles = needles.every((needle) => paragraph.includes(needle));
+    if (!hasAllNeedles || paragraph.includes('<w:pageBreakBefore')) return paragraph;
+
+    if (paragraph.includes('<w:pPr>')) {
+      return paragraph.replace('<w:pPr>', '<w:pPr><w:pageBreakBefore/>');
+    }
+
+    const start = paragraph.match(/^<w:p\b[^>]*>/)?.[0] || '<w:p>';
+    return paragraph.replace(start, `${start}<w:pPr><w:pageBreakBefore/></w:pPr>`);
+  });
+}
+
+function compactPromiseParagraphs(documentXml: string): string {
+  let inPromise = false;
+
+  return documentXml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraph) => {
+    if (paragraph.includes('入 职 承 诺')) {
+      inPromise = true;
+      return paragraph;
+    }
+
+    if (!inPromise || paragraph.includes('签  名：') || paragraph.includes('签 名：')) {
+      return paragraph;
+    }
+
+    let next = paragraph
+      .replace(/<w:spacing\b[^>]*\/>/g, '<w:spacing w:line="360" w:lineRule="atLeast"/>')
+      .replace(/<w:sz w:val="[^"]+"\/>/g, '<w:sz w:val="22"/>')
+      .replace(/<w:szCs w:val="[^"]+"\/>/g, '<w:szCs w:val="22"/>');
+
+    if (!next.includes('<w:spacing ')) {
+      next = next.replace('</w:pPr>', '<w:spacing w:line="360" w:lineRule="atLeast"/></w:pPr>');
+    }
+
+    return next;
+  });
+}
+
 function signatureDrawingXml(relId: string): string {
   return `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="900000" cy="320000"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="1001" name="employee-signature"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="1001" name="signature.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="900000" cy="320000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>`;
 }
@@ -307,15 +358,17 @@ function replaceSignatureParagraph(
     if (!paragraph.includes('签  名：')) return paragraph;
 
     const start = paragraph.match(/^<w:p\b[^>]*>/)?.[0] || '<w:p>';
-    const pPr = paragraph.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] || '';
-    const rPr = paragraph.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] || defaultRunProperties();
-    const labelRun = runXml('签  名：  ', rPr);
+    const originalRPr = paragraph.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] || defaultRunProperties();
+    const rPr = withFontSize(originalRPr, 22);
+    const signaturePPr = '<w:pPr><w:spacing w:before="1700" w:line="360" w:lineRule="atLeast"/><w:jc w:val="right"/></w:pPr>';
+    const datePPr = '<w:pPr><w:spacing w:line="360" w:lineRule="atLeast"/><w:jc w:val="right"/></w:pPr>';
+    const labelRun = runXml('签 名： ', rPr);
     const valueRun = signatureRelId
       ? `<w:r>${signatureDrawingXml(signatureRelId)}</w:r>`
       : runXml(fallbackName, rPr);
-    const dateRun = runXml(`          日 期：${signatureDate}`, rPr);
+    const dateRun = runXml(`日 期：${signatureDate}`, rPr);
 
-    return `${start}${signatureParagraphProperties(pPr)}${labelRun}${valueRun}${dateRun}</w:p>`;
+    return `${start}${signaturePPr}${labelRun}${valueRun}</w:p><w:p>${datePPr}${dateRun}</w:p>`;
   });
 }
 
@@ -379,21 +432,20 @@ function healthText(record: OnboardingRecord): string {
 function noticeText(record: OnboardingRecord): string {
   const data = record.data;
   return [
-    `本人入厂日期为：${formatChineseDate(data.hireDate)}`,
-    `劳动合同期限：${data.contractTerm || ''}`,
-    `劳动合同签订后，自签订日期起，试用期为 ${data.probationMonths || ''} 个月，试用期工资为 ${money(data.probationSalary)}`,
+    `1、本人入厂日期为：${formatChineseDate(data.hireDate)}`,
+    `2、劳动合同期限：${data.contractTerm || ''}`,
+    `3、劳动合同签订后，自签订日期起，试用期为 ${data.probationMonths || ''} 个月，试用期工资为 ${money(data.probationSalary)}`,
     `4、入职岗位：${data.position || ''}，使用机器约定：${data.machineAgreement || ''}`,
     `5、本人的工资计算方式为 ${data.wageMethod || ''}`,
     '6、辞工必须递交书面辞工书，经领导审批后一个月之后方可离开工作岗位！',
     '7、认真做好本职工作，服从主管的安排！',
-  ].join(' ');
+  ].join('\n');
 }
 
 function hrOpinionText(record: OnboardingRecord): string {
   return [
     record.hrOpinion || '同意入职。',
     `审核人：${record.reviewerName || ''}`,
-    `日期：${formatChineseDate(record.reviewedAt)}`,
   ].join('  ');
 }
 
@@ -433,6 +485,7 @@ function fillTemplate(documentXml: string, record: OnboardingRecord): string {
   }
 
   nextXml = removeParagraphContaining(nextXml, ['日 期：']);
+  nextXml = addPageBreakBeforeParagraphContaining(nextXml, ['入 职 承 诺']);
   return nextXml;
 }
 
@@ -443,6 +496,7 @@ export function buildOnboardingDocx(record: OnboardingRecord): Buffer {
   let documentXml = readEntry(entries, 'word/document.xml');
 
   documentXml = fillTemplate(documentXml, record);
+  documentXml = compactPromiseParagraphs(documentXml);
   documentXml = replaceSignatureParagraph(
     documentXml,
     signature ? SIGNATURE_REL_ID : null,

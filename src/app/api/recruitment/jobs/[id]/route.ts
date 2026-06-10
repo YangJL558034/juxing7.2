@@ -82,7 +82,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       UPDATE recruitment_jobs
       SET title = ?, department = ?, location = ?, salary_range = ?, headcount = ?, deadline = ?,
           requirements = ?, responsibilities = ?, benefits = ?, status = ?, sort_order = ?,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = datetime('now', '+8 hours')
       WHERE id = ?
     `).run(
       data.title,

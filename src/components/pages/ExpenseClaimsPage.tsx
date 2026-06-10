@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Search, Eye, Trash2, Download, Check, X, Circle } from 'lucide-react';
+import { chinaToday, formatChinaDateTime } from '@/lib/china-time';
 
 interface User {
   id: number;
@@ -76,7 +77,7 @@ export default function ExpenseClaimsPage() {
     title: '',
     department: '',
     expense_type: '差旅费',
-    expense_date: new Date().toISOString().split('T')[0],
+    expense_date: chinaToday(),
     description: '',
     items: [{ name: '', amount: 0, remark: '' }] as ExpenseItem[],
     approver_id: '',
@@ -244,7 +245,7 @@ export default function ExpenseClaimsPage() {
       title: '',
       department: '',
       expense_type: '差旅费',
-      expense_date: new Date().toISOString().split('T')[0],
+      expense_date: chinaToday(),
       description: '',
       items: [{ name: '', amount: 0, remark: '' }],
       approver_id: '',
@@ -336,7 +337,7 @@ export default function ExpenseClaimsPage() {
                       <Badge className={getStatusStyle(claim.status)}>{claim.status}</Badge>
                     </TableCell>
                     <TableCell>{claim.current_approver_name || '-'}</TableCell>
-                    <TableCell>{new Date(claim.created_at).toLocaleString()}</TableCell>
+                    <TableCell>{formatChinaDateTime(claim.created_at)}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Button size="sm" variant="ghost" onClick={() => { setSelectedClaim(claim); setShowDetailDialog(true); }}>
@@ -517,7 +518,7 @@ export default function ExpenseClaimsPage() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">申请时间</Label>
-                  <p>{new Date(selectedClaim.created_at).toLocaleString()}</p>
+                  <p>{formatChinaDateTime(selectedClaim.created_at)}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">当前审批人</Label>
@@ -621,7 +622,7 @@ export default function ExpenseClaimsPage() {
                         <div className="flex-1">
                           <div className="flex justify-between">
                             <span className="font-medium">{approval.approver_name}</span>
-                            <span className="text-sm text-muted-foreground">{new Date(approval.created_at).toLocaleString()}</span>
+                            <span className="text-sm text-muted-foreground">{formatChinaDateTime(approval.created_at)}</span>
                           </div>
                           <p className="text-sm">
                             <Badge variant={approval.action === 'approved' ? 'default' : 'destructive'} className="mr-2">

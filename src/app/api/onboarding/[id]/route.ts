@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, logOperationServer } from '@/lib/database';
 import { verifyToken } from '@/lib/auth';
 import { normalizeOnboardingData, parseOnboardingRow, type OnboardingDbRow } from '@/lib/onboarding-records';
+import { resolveEmployeeLocationByDepartment } from '@/lib/employee-location';
 
 async function requireUser(request: NextRequest) {
   const token = request.cookies.get('auth_token')?.value;
@@ -74,7 +75,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           hire_date = ?,
           recruitment_source = ?,
           data_json = ?,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = datetime('now', '+8 hours')
       WHERE id = ?
     `).run(
       data.name.trim(),
@@ -90,6 +91,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
 
     if (row.employee_id) {
+      const employeeLocation = resolveEmployeeLocationByDepartment(data.department);
       db.prepare(`
         UPDATE employees
         SET name = ?,
@@ -98,7 +100,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             department = ?,
             position = ?,
             base_salary = ?,
-            hire_date = ?
+            hire_date = ?,
+            location = ?
         WHERE id = ?
       `).run(
         data.name.trim(),
@@ -108,6 +111,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         data.position.trim(),
         Number(data.probationSalary) || 0,
         data.hireDate || null,
+        employeeLocation,
         row.employee_id,
       );
     }

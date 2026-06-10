@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Plus, Search, Eye, Edit, Trash2, Check, X, FileText, Upload, Download, User, Circle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { formatChinaDateTime } from '@/lib/china-time';
 
 interface User {
   id: number;
@@ -360,7 +361,7 @@ export default function PurchaseRequestsPage() {
                         <Badge className={getStatusStyle(req.status)}>{req.status}</Badge>
                       </TableCell>
                       <TableCell>{req.current_approver_name || '-'}</TableCell>
-                      <TableCell>{new Date(req.created_at).toLocaleString()}</TableCell>
+                      <TableCell>{formatChinaDateTime(req.created_at)}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button size="sm" variant="ghost" onClick={() => { setSelectedRequest(req); setShowDetailDialog(true); }}>
@@ -650,7 +651,7 @@ export default function PurchaseRequestsPage() {
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3">
                     <span className="text-xs text-muted-foreground block mb-1">申请时间</span>
-                    <span className="text-sm text-slate-700">{new Date(selectedRequest.created_at).toLocaleString()}</span>
+                    <span className="text-sm text-slate-700">{formatChinaDateTime(selectedRequest.created_at)}</span>
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3">
                     <span className="text-xs text-muted-foreground block mb-1">紧急程度</span>
@@ -779,7 +780,7 @@ export default function PurchaseRequestsPage() {
                           <div className="flex-1 bg-white rounded-lg p-3 border border-slate-100">
                             <div className="flex items-center justify-between mb-1">
                               <span className="font-medium text-slate-800 text-sm">{approval.approver_name}</span>
-                              <span className="text-xs text-muted-foreground">{new Date(approval.created_at).toLocaleString()}</span>
+                              <span className="text-xs text-muted-foreground">{formatChinaDateTime(approval.created_at)}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <Badge variant={approval.action === 'approved' ? 'default' : 'destructive'} className="text-xs">

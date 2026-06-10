@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { formatChinaDate, formatChinaDateTime, parseChinaTime } from '@/lib/china-time';
 import { NotificationDetailSections, isRecruitmentNotification } from '@/components/notifications/NotificationDetailSections';
 
 interface Notification {
@@ -199,7 +200,8 @@ export function NotificationBell({ userId, userName }: NotificationBellProps) {
 
   // 格式化时间
   const formatTime = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseChinaTime(dateStr);
+    if (!date) return '-';
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
@@ -210,7 +212,7 @@ export function NotificationBell({ userId, userName }: NotificationBellProps) {
     if (minutes < 60) return `${minutes}分钟前`;
     if (hours < 24) return `${hours}小时前`;
     if (days < 7) return `${days}天前`;
-    return date.toLocaleDateString('zh-CN');
+    return formatChinaDate(dateStr);
   };
 
   // 获取通知类型颜色
@@ -450,7 +452,7 @@ export function NotificationBell({ userId, userName }: NotificationBellProps) {
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Clock className="w-4 h-4" />
-                  {new Date(selectedNotification.created_at).toLocaleString('zh-CN')}
+                  {formatChinaDateTime(selectedNotification.created_at)}
                 </span>
                 {selectedNotification.sender_name && (
                   <span>发送者: {selectedNotification.sender_name}</span>

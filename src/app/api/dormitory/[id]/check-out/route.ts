@@ -58,8 +58,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           checkout_reason = ?,
           key_returned = ?,
           checkout_handler_name = ?,
-          checked_out_at = CURRENT_TIMESTAMP,
-          updated_at = CURRENT_TIMESTAMP
+          checked_out_at = datetime('now', '+8 hours'),
+          updated_at = datetime('now', '+8 hours')
       WHERE id = ?
     `).run(checkoutApplyDate, moveOutDate, checkoutReason, keyReturned, checkoutHandlerName, id);
 

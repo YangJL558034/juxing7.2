@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, logOperationServer } from '@/lib/database';
 import { verifyToken } from '@/lib/auth';
 import { parseOnboardingRow, type OnboardingDbRow } from '@/lib/onboarding-records';
+import { resolveEmployeeLocationByDepartment } from '@/lib/employee-location';
 
 async function requireUser(request: NextRequest) {
   const token = request.cookies.get('auth_token')?.value;
@@ -32,6 +33,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const record = parseOnboardingRow(row);
     const data = record.data;
+    const employeeLocation = resolveEmployeeLocationByDepartment(data.department);
 
     const existingEmployee = db.prepare(`
       SELECT id FROM employees
@@ -54,10 +56,35 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         Number(data.probationSalary) || 0,
         '在职',
         '',
-        '车间',
+        employeeLocation,
         data.hireDate || null,
       );
       employeeId = Number(result.lastInsertRowid);
+    } else {
+      db.prepare(`
+        UPDATE employees
+        SET name = ?,
+            id_card = ?,
+            phone = ?,
+            department = ?,
+            position = ?,
+            base_salary = ?,
+            status = '在职',
+            resign_date = NULL,
+            location = ?,
+            hire_date = COALESCE(?, hire_date)
+        WHERE id = ?
+      `).run(
+        data.name,
+        data.idCard,
+        data.phone,
+        data.department,
+        data.position,
+        Number(data.probationSalary) || 0,
+        employeeLocation,
+        data.hireDate || null,
+        employeeId,
+      );
     }
 
     db.prepare(`
@@ -65,9 +92,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       SET status = '已审核',
           reviewer_name = ?,
           hr_opinion = ?,
-          reviewed_at = CURRENT_TIMESTAMP,
+          reviewed_at = datetime('now', '+8 hours'),
           employee_id = ?,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = datetime('now', '+8 hours')
       WHERE id = ?
     `).run(reviewerName, hrOpinion, employeeId, id);
 

@@ -38,6 +38,7 @@ import {
 import { Clock, Search, Download, Calendar, Users, ExternalLink, Copy, Plus, Trash2, Phone, User, Building, Upload, FileSpreadsheet, Check, UserCog, Edit, Pencil, FileDown, ChevronDown, ChevronUp, PenTool, RefreshCw } from 'lucide-react';
 import { WorkHoursImport } from './WorkHoursImport';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { chinaToday, formatChinaDateTime } from '@/lib/china-time';
 
 interface SalaryRecord {
   id: number;
@@ -137,7 +138,8 @@ interface MonthlyRecord {
 }
 
 function normalizeLocation(value?: string | null): 'office' | 'workshop' {
-  return value === '办公室' || value === 'office' ? 'office' : 'workshop';
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'workshop' || normalized === '车间' ? 'workshop' : 'office';
 }
 
 function matchesRecordLocation(record: MonthlyRecord, location: 'office' | 'workshop') {
@@ -639,7 +641,7 @@ export default function SalaryPage() {
   // 导出员工列表
   const handleExportEmployees = () => {
     const filteredEmployees = employees.filter(emp => {
-      const empLocation = emp.location === '办公室' ? 'office' : emp.location === '车间' ? 'workshop' : emp.location;
+      const empLocation = normalizeLocation(emp.location);
       return empLocation === employeeLocation;
     });
     
@@ -657,7 +659,7 @@ export default function SalaryPage() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `员工列表_${employeeLocation === 'office' ? '办公室' : '车间'}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `员工列表_${employeeLocation === 'office' ? '办公室' : '车间'}_${chinaToday()}.csv`;
     link.click();
   };
 
@@ -1133,7 +1135,7 @@ export default function SalaryPage() {
                         <span className="font-medium text-green-700">在职员工</span>
                         <span className="text-sm text-green-600">
                           ({employees.filter(emp => {
-                            const empLocation = emp.location === '办公室' ? 'office' : emp.location === '车间' ? 'workshop' : emp.location;
+                            const empLocation = normalizeLocation(emp.location);
                             return empLocation === employeeLocation && (emp.status === '在职' || !emp.status);
                           }).length}人)
                         </span>
@@ -1153,7 +1155,7 @@ export default function SalaryPage() {
                       </TableHeader>
                       <TableBody>
                         {employees.filter(emp => {
-                          const empLocation = emp.location === '办公室' ? 'office' : emp.location === '车间' ? 'workshop' : emp.location;
+                          const empLocation = normalizeLocation(emp.location);
                           return empLocation === employeeLocation && (emp.status === '在职' || !emp.status);
                         }).map((emp) => (
                           <TableRow key={emp.id}>
@@ -1163,8 +1165,8 @@ export default function SalaryPage() {
                             <TableCell>{emp.department || '-'}</TableCell>
                             <TableCell>{emp.hire_date || '-'}</TableCell>
                             <TableCell>
-                              <span className={`px-2 py-1 rounded text-xs ${(emp.location === 'office' || emp.location === '办公室') ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                                {(emp.location === 'office' || emp.location === '办公室') ? '办公室' : '车间'}
+                              <span className={`px-2 py-1 rounded text-xs ${normalizeLocation(emp.location) === 'office' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                {normalizeLocation(emp.location) === 'office' ? '办公室' : '车间'}
                               </span>
                             </TableCell>
                             <TableCell className="text-right">
@@ -1179,7 +1181,7 @@ export default function SalaryPage() {
                                       phone: emp.phone || '',
                                       id_card: emp.id_card || '',
                                       department: emp.department || '',
-                                      location: (emp.location === 'office' || emp.location === 'workshop') ? emp.location : 'workshop',
+                                      location: normalizeLocation(emp.location),
                                       status: emp.status || '在职',
                                       hire_date: emp.hire_date || ''
                                     });
@@ -1201,7 +1203,7 @@ export default function SalaryPage() {
                           </TableRow>
                         ))}
                         {employees.filter(emp => {
-                          const empLocation = emp.location === '办公室' ? 'office' : emp.location === '车间' ? 'workshop' : emp.location;
+                          const empLocation = normalizeLocation(emp.location);
                           return empLocation === employeeLocation && (emp.status === '在职' || !emp.status);
                         }).length === 0 && (
                           <TableRow>
@@ -1222,7 +1224,7 @@ export default function SalaryPage() {
                         <span className="font-medium text-red-700">离职员工</span>
                         <span className="text-sm text-red-600">
                           ({employees.filter(emp => {
-                            const empLocation = emp.location === '办公室' ? 'office' : emp.location === '车间' ? 'workshop' : emp.location;
+                            const empLocation = normalizeLocation(emp.location);
                             return empLocation === employeeLocation && emp.status === '离职';
                           }).length}人)
                         </span>
@@ -1241,7 +1243,7 @@ export default function SalaryPage() {
                       </TableHeader>
                       <TableBody>
                         {employees.filter(emp => {
-                          const empLocation = emp.location === '办公室' ? 'office' : emp.location === '车间' ? 'workshop' : emp.location;
+                          const empLocation = normalizeLocation(emp.location);
                           return empLocation === employeeLocation && emp.status === '离职';
                         }).map((emp) => (
                           <TableRow key={emp.id} className="opacity-75">
@@ -1264,7 +1266,7 @@ export default function SalaryPage() {
                                       phone: emp.phone || '',
                                       id_card: emp.id_card || '',
                                       department: emp.department || '',
-                                      location: (emp.location === 'office' || emp.location === 'workshop') ? emp.location : 'workshop',
+                                      location: normalizeLocation(emp.location),
                                       status: emp.status || '在职',
                                       hire_date: emp.hire_date || ''
                                     });
@@ -1286,7 +1288,7 @@ export default function SalaryPage() {
                           </TableRow>
                         ))}
                         {employees.filter(emp => {
-                          const empLocation = emp.location === '办公室' ? 'office' : emp.location === '车间' ? 'workshop' : emp.location;
+                          const empLocation = normalizeLocation(emp.location);
                           return empLocation === employeeLocation && emp.status === '离职';
                         }).length === 0 && (
                           <TableRow>
@@ -2716,7 +2718,7 @@ export default function SalaryPage() {
                       <SelectContent>
                         {employees
                           .filter(e => {
-                            const empLoc = e.location === '办公室' || e.location === 'office' ? 'office' : 'workshop';
+                            const empLoc = normalizeLocation(e.location);
                             const isActive = !e.status || e.status === '在职';
                             return empLoc === attendanceLocation && isActive;
                           })
@@ -2834,13 +2836,9 @@ export default function SalaryPage() {
                 <SelectContent>
                   {employees
                     .filter(e => {
-                      const empLoc = e.location?.toLowerCase();
+                      const empLoc = normalizeLocation(e.location);
                       const isActive = !e.status || e.status === '在职';
-                      return isActive && (
-                        empLoc === salaryLocation || 
-                        (salaryLocation === 'office' && empLoc === '办公室') ||
-                        (salaryLocation === 'workshop' && empLoc === '车间')
-                      );
+                      return isActive && empLoc === salaryLocation;
                     })
                     .map(e => (
                       <SelectItem key={e.id} value={String(e.id)}>
@@ -3036,7 +3034,7 @@ export default function SalaryPage() {
             {/* 应扣款项 - 根据格式显示不同字段 */}
             <div className="border-t pt-4">
               <h4 className="font-medium mb-3 text-red-600">应扣款项</h4>
-              {newSalaryData.location === '办公室' || newSalaryData.location === 'office' ? (
+              {normalizeLocation(newSalaryData.location) === 'office' ? (
                 // 办公室格式：公积金、社会保险、社保养老调
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-2">
@@ -3120,7 +3118,7 @@ export default function SalaryPage() {
               {viewingSignature?.employeeName} 的签名
               {viewingSignature?.signTime && (
                 <span className="ml-2 text-muted-foreground">
-                  签字时间：{new Date(viewingSignature.signTime).toLocaleString('zh-CN')}
+                  签字时间：{formatChinaDateTime(viewingSignature.signTime)}
                 </span>
               )}
             </DialogDescription>

@@ -65,7 +65,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       WHERE room_no = ?
         AND bed_no = ?
         AND id <> ?
-        AND status = '已入住'
+        AND status IN ('已审核', '已入住')
       LIMIT 1
     `).get(roomNo, bedNo, id) as { id: number; name: string } | undefined;
     if (occupied) {
@@ -81,7 +81,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           key_issued = ?,
           handler_name = ?,
           checked_in_at = ?,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = datetime('now', '+8 hours')
       WHERE id = ?
     `).run(roomNo, bedNo, roomBed, keyIssued, handlerName, checkedInAt, id);
 

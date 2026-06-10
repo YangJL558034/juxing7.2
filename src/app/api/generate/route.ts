@@ -27,6 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, db } from '@/lib/database';
 import { verifyToken } from '@/lib/auth';
+import { CHINA_TIME_ZONE, chinaToday, formatChinaTime } from '@/lib/china-time';
 
 // DeepSeek AI 服务
 async function callDeepSeek(apiKey: string, prompt: string): Promise<string> {
@@ -308,7 +309,7 @@ const documentHandlers: Record<string, (params: Record<string, string>, isAdmin:
     const amount = parseFloat(params.amount || '0');
     const reason = params.reason || params.purpose || params.description || '日常费用';
     const expenseType = params.type || params.expenseType || '其他';
-    const expenseDate = params.date || new Date().toISOString().split('T')[0];
+    const expenseDate = params.date || chinaToday();
     
     try {
       const user = db!.prepare('SELECT name, department FROM users WHERE id = ?').get(userId) as any;
@@ -773,7 +774,7 @@ export async function POST(request: NextRequest) {
         
         if (/时间|几点/.test(lowerQuestion)) {
           const now = new Date();
-          const time = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+          const time = formatChinaTime(now);
           return NextResponse.json({
             success: true,
             message: `🕐 当前时间是：${time}`
@@ -782,7 +783,13 @@ export async function POST(request: NextRequest) {
         
         if (/日期|今天/.test(lowerQuestion)) {
           const now = new Date();
-          const date = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+          const date = now.toLocaleDateString('zh-CN', {
+            timeZone: CHINA_TIME_ZONE,
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            weekday: 'long',
+          });
           return NextResponse.json({
             success: true,
             message: `📅 今天是：${date}`

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, logOperationServer } from '@/lib/database';
 import { verifyToken } from '@/lib/auth';
+import { resolveEmployeeSalaryLocation } from '@/lib/employee-location';
 
 // 获取员工列表
 export async function GET(request: NextRequest) {
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { name, id_card, phone, department, position, base_salary, status, location, hire_date } = body;
+    const employeeLocation = resolveEmployeeSalaryLocation(department, location);
 
     if (!name) {
       return NextResponse.json({ error: '姓名为必填项' }, { status: 400 });
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
       base_salary || 0,
       status || '在职',
       '',
-      location || '办公室',
+      employeeLocation,
       hire_date || null
     );
 
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
       userName: decoded.name || decoded.username,
       module: 'employee',
       action: 'create',
-      details: { name, department, position, status, location },
+      details: { name, department, position, status, location: employeeLocation },
       ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
       userAgent: request.headers.get('user-agent') || null,
     });

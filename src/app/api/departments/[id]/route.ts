@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, getTokenFromHeader } from '@/lib/auth';
 import { query } from '@/lib/database';
+import { chinaNowSql } from '@/lib/china-time';
 
 function getToken(request: NextRequest): string | null {
   const authHeader = request.headers.get('Authorization');
@@ -46,7 +47,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       '编辑部门',
       `编辑部门：${name}`,
       request.headers.get('x-forwarded-for') || request.headers.get('remote-addr') || null,
-      request.headers.get('user-agent') || null
+      request.headers.get('user-agent') || null,
+      chinaNowSql()
     );
 
     return NextResponse.json({ success: true });
@@ -87,7 +89,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       '删除部门',
       `删除部门：${deptName}`,
       request.headers.get('x-forwarded-for') || request.headers.get('remote-addr') || null,
-      request.headers.get('user-agent') || null
+      request.headers.get('user-agent') || null,
+      chinaNowSql()
     );
 
     return NextResponse.json({ success: true });

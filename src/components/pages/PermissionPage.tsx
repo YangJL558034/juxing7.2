@@ -28,6 +28,7 @@ import {
   Plus,
   RefreshCw,
 } from 'lucide-react';
+import { chinaToday } from '@/lib/china-time';
 
 interface Role {
   id: number;
@@ -121,7 +122,7 @@ export default function PermissionPage() {
       setRoles(roles.map(r => r.id === editingRole.id ? { ...r, ...newRole, id: r.id, created_at: r.created_at } : r));
     } else {
       const newId = Math.max(...roles.map(r => r.id)) + 1;
-      setRoles([...roles, { ...newRole, id: newId, created_at: new Date().toISOString().split('T')[0] }]);
+      setRoles([...roles, { ...newRole, id: newId, created_at: chinaToday() }]);
     }
     setShowRoleDialog(false);
   };

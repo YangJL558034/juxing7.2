@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, db, generateDocNo } from '@/lib/database';
 import { verifyToken } from '@/lib/auth';
 import { sendEmail } from '@/lib/email';
+import { chinaNowSql } from '@/lib/china-time';
 
 export async function GET(request: NextRequest) {
   try {
@@ -88,8 +89,7 @@ export async function POST(request: NextRequest) {
     query.messages.create.run(approver.id, '费用报销审批通知', `${user.name} 提交了费用报销单「${title}」，金额 ¥${total_amount || 0}，请您审批。`, 'approval', 'expense_claim', claimId);
     
     // 获取当前本地时间
-    const now = new Date();
-    const localTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    const localTime = chinaNowSql();
     
     // 写入通知中心记录
     const notificationResult = db.prepare(`

@@ -3,6 +3,7 @@
  */
 
 import { type ChildProcess } from 'child_process';
+import { formatChinaDateTime } from '@/lib/china-time';
 
 // 机器人运行状态
 export let botRunning = false;
@@ -21,7 +22,7 @@ export function setBotProcess(process: ChildProcess | null) {
 
 // 添加日志
 export function addLog(type: string, message: string) {
-  const timestamp = new Date().toLocaleString('zh-CN');
+  const timestamp = formatChinaDateTime(new Date());
   botLogs.push(`[${timestamp}] [${type}] ${message}`);
   // 保留最近100条日志
   if (botLogs.length > 100) {

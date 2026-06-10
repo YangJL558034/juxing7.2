@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, logOperationServer } from '@/lib/database';
+import { chinaNowSql } from '@/lib/china-time';
 
 // 获取资产列表
 export async function GET(request: NextRequest) {
@@ -66,14 +67,7 @@ export async function POST(request: NextRequest) {
     const configJson = config ? JSON.stringify(config) : null;
     
     // 如果有使用人，设置领用时间
-    const claimTime = assetUser ? new Date().toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    }) : null;
+    const claimTime = assetUser ? chinaNowSql() : null;
     
     const result = query.createAsset.run(
       type,
@@ -139,14 +133,7 @@ export async function PUT(request: NextRequest) {
     
     // 如果使用人从空变为有值，设置领用时间
     if (!currentAsset?.user && assetUser) {
-      claimTime = new Date().toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
+      claimTime = chinaNowSql();
     }
     // 如果使用人从有值变为空，清空领用时间
     else if (currentAsset?.user && !assetUser) {

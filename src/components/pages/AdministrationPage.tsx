@@ -15,6 +15,7 @@ import {
   KeyRound,
   LogOut,
   Loader2,
+  Pencil,
   Plus,
   RefreshCcw,
   Search,
@@ -43,11 +44,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { chinaCurrentMonth, chinaToday, formatChinaDateTime, parseChinaTime } from '@/lib/china-time';
 import { cn } from '@/lib/utils';
 import type {
   DormitoryBed,
+  DormitoryDeleteRecord,
   DormitoryRecord,
   DormitoryRoom,
+  DormitoryRoomChangeRecord,
   DormitoryRoomResident,
   DormitoryStatus,
 } from '@/types/dormitory';
@@ -92,6 +96,33 @@ interface RoomResidentsResponse {
   error?: string;
 }
 
+interface RoomChangesResponse {
+  success: boolean;
+  changes?: DormitoryRoomChangeRecord[];
+  error?: string;
+}
+
+interface RoomChangeMutateResponse extends MutateResponse {
+  changes?: DormitoryRoomChangeRecord[];
+}
+
+interface RoomChangeTarget {
+  id: number;
+  name: string;
+  phone?: string | null;
+  department?: string | null;
+  position?: string | null;
+  roomNo?: string | null;
+  bedNo?: string | null;
+  roomBed?: string | null;
+}
+
+interface DeleteRecordsResponse {
+  success: boolean;
+  records?: DormitoryDeleteRecord[];
+  error?: string;
+}
+
 interface WaterMeterSummary {
   total: number;
   totalUsage: number;
@@ -105,8 +136,11 @@ interface WaterMeterListResponse {
   error?: string;
 }
 
+type DormitoryListTab = DormitoryStatus | '删除记录';
+
 const emptyCounts: DormitoryCounts = { total: 0, pending: 0, reviewed: 0, checkedIn: 0, checkedOut: 0 };
 const emptyWaterSummary: WaterMeterSummary = { total: 0, totalUsage: 0, totalFee: 0 };
+const roomTypeOptions = ['未设置', '男生寝室', '女生寝室'];
 
 const statusTone: Record<DormitoryStatus, string> = {
   待审核: 'bg-orange-50 text-orange-700 ring-orange-200',
@@ -121,14 +155,39 @@ function formatDate(value?: string | null) {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return '-';
-  return value.replace('T', ' ').slice(0, 16);
+  return formatChinaDateTime(value, false);
+}
+
+function formatDeleteCountdown(expiresAt?: string | null, now = Date.now()) {
+  if (!expiresAt) return '-';
+  const target = parseChinaTime(expiresAt)?.getTime() ?? NaN;
+  if (!Number.isFinite(target)) return '-';
+  const remainingMs = target - now;
+  if (remainingMs <= 0) return '即将清理';
+
+  const totalMinutes = Math.ceil(remainingMs / 60000);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return `剩余 ${days} 天 ${hours} 小时`;
+  if (hours > 0) return `剩余 ${hours} 小时 ${minutes} 分钟`;
+  return `剩余 ${minutes} 分钟`;
 }
 
 function display(value?: string | number | null) {
   if (value === undefined || value === null) return '-';
   const text = String(value).trim();
   return text || '-';
+}
+
+function normalizeRoomType(value?: string | null) {
+  const text = String(value || '').trim();
+  return roomTypeOptions.includes(text) ? text : '未设置';
+}
+
+function roomTypeToPayload(value: string) {
+  return value === '未设置' ? '' : value;
 }
 
 function maskPhone(value?: string | null) {
@@ -138,11 +197,11 @@ function maskPhone(value?: string | null) {
 }
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return chinaToday();
 }
 
 function currentMonth() {
-  return new Date().toISOString().slice(0, 7);
+  return chinaCurrentMonth();
 }
 
 function canExportDormitory(record?: DormitoryRecord | null) {
@@ -202,7 +261,7 @@ function DetailGrid({ pairs }: { pairs: Array<[string, string | number | null | 
 export default function AdministrationPage() {
   const [query, setQuery] = useState('');
   const [keyword, setKeyword] = useState('');
-  const [activeStatus, setActiveStatus] = useState<DormitoryStatus>('待审核');
+  const [activeStatus, setActiveStatus] = useState<DormitoryListTab>('待审核');
   const [records, setRecords] = useState<DormitoryRecord[]>([]);
   const [counts, setCounts] = useState<DormitoryCounts>(emptyCounts);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -233,11 +292,28 @@ export default function AdministrationPage() {
   const [keyReturned, setKeyReturned] = useState('');
   const [checkoutHandlerName, setCheckoutHandlerName] = useState('');
   const [checkingOut, setCheckingOut] = useState(false);
+  const [deletingRecordId, setDeletingRecordId] = useState<number | null>(null);
+  const [deleteRecords, setDeleteRecords] = useState<DormitoryDeleteRecord[]>([]);
+  const [deleteRecordsLoading, setDeleteRecordsLoading] = useState(false);
+  const [restoringDeleteId, setRestoringDeleteId] = useState<number | null>(null);
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
+
+  const [roomChangeOpen, setRoomChangeOpen] = useState(false);
+  const [roomChangeTarget, setRoomChangeTarget] = useState<RoomChangeTarget | null>(null);
+  const [changeRoomNo, setChangeRoomNo] = useState('');
+  const [changeBedNo, setChangeBedNo] = useState('');
+  const [changeHandlerName, setChangeHandlerName] = useState('');
+  const [changeReason, setChangeReason] = useState('');
+  const [changingRoom, setChangingRoom] = useState(false);
+  const [roomChanges, setRoomChanges] = useState<DormitoryRoomChangeRecord[]>([]);
+  const [roomChangesLoading, setRoomChangesLoading] = useState(false);
 
   const [rooms, setRooms] = useState<DormitoryRoom[]>([]);
   const [beds, setBeds] = useState<DormitoryBed[]>([]);
   const [roomsOpen, setRoomsOpen] = useState(false);
   const [bedsOpen, setBedsOpen] = useState(false);
+  const [roomEditOpen, setRoomEditOpen] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<DormitoryRoom | null>(null);
   const [roomDetailOpen, setRoomDetailOpen] = useState(false);
   const [roomDetail, setRoomDetail] = useState<DormitoryRoom | null>(null);
   const [roomResidents, setRoomResidents] = useState<DormitoryRoomResident[]>([]);
@@ -252,11 +328,24 @@ export default function AdministrationPage() {
   const [bedSaving, setBedSaving] = useState(false);
   const [newRoomNo, setNewRoomNo] = useState('');
   const [newRoomCapacity, setNewRoomCapacity] = useState('');
+  const [newRoomType, setNewRoomType] = useState('未设置');
   const [newRoomRemark, setNewRoomRemark] = useState('');
+  const [editRoomNo, setEditRoomNo] = useState('');
+  const [editRoomCapacity, setEditRoomCapacity] = useState('');
+  const [editRoomType, setEditRoomType] = useState('未设置');
+  const [editRoomRemark, setEditRoomRemark] = useState('');
+  const [roomUpdating, setRoomUpdating] = useState(false);
   const [bedRoomId, setBedRoomId] = useState('');
   const [newBedNo, setNewBedNo] = useState('');
 
   const loadRecords = useCallback(async () => {
+    if (activeStatus === '删除记录') {
+      setRecords([]);
+      setSelectedId(null);
+      setDetailVisible(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -316,6 +405,40 @@ export default function AdministrationPage() {
     }
   }, []);
 
+  const loadRoomChanges = useCallback(async (recordId: number) => {
+    setRoomChangesLoading(true);
+    try {
+      const response = await fetch(`/api/dormitory/${recordId}/room-change`, { cache: 'no-store' });
+      const result = await response.json().catch(() => ({})) as RoomChangesResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '获取更换记录失败');
+      }
+      setRoomChanges(result.changes || []);
+    } catch (fetchError) {
+      alert(fetchError instanceof Error ? fetchError.message : '获取更换记录失败');
+      setRoomChanges([]);
+    } finally {
+      setRoomChangesLoading(false);
+    }
+  }, []);
+
+  const loadDeleteRecords = useCallback(async () => {
+    setDeleteRecordsLoading(true);
+    try {
+      const response = await fetch('/api/dormitory/delete-records', { cache: 'no-store' });
+      const result = await response.json().catch(() => ({})) as DeleteRecordsResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '获取删除记录失败');
+      }
+      setDeleteRecords(result.records || []);
+    } catch (fetchError) {
+      alert(fetchError instanceof Error ? fetchError.message : '获取删除记录失败');
+      setDeleteRecords([]);
+    } finally {
+      setDeleteRecordsLoading(false);
+    }
+  }, []);
+
   const loadWaterRecords = useCallback(async () => {
     setWaterLoading(true);
     try {
@@ -340,18 +463,48 @@ export default function AdministrationPage() {
   }, [waterRoomFilter]);
 
   useEffect(() => {
+    if (activeStatus === '删除记录') {
+      void loadDeleteRecords();
+      return;
+    }
+
     void loadRecords();
-  }, [loadRecords]);
+  }, [activeStatus, loadDeleteRecords, loadRecords]);
 
   useEffect(() => {
     void loadRooms();
     void loadBeds();
-  }, [loadBeds, loadRooms]);
+    void loadDeleteRecords();
+  }, [loadBeds, loadDeleteRecords, loadRooms]);
+
+  useEffect(() => {
+    if (activeStatus !== '删除记录') return;
+
+    setCountdownNow(Date.now());
+    const timer = window.setInterval(() => setCountdownNow(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, [activeStatus]);
 
   const selectedRecord = useMemo(() => {
     if (!selectedId) return null;
     return records.find((record) => record.id === selectedId) || null;
   }, [records, selectedId]);
+
+  const filteredDeleteRecords = useMemo(() => {
+    const text = keyword.trim().toLowerCase();
+    if (!text) return deleteRecords;
+
+    return deleteRecords.filter((record) => [
+      record.employeeName,
+      record.phone,
+      record.department,
+      record.position,
+      record.roomNo,
+      record.bedNo,
+      record.roomBed,
+      record.deletedByName,
+    ].some((value) => String(value || '').toLowerCase().includes(text)));
+  }, [deleteRecords, keyword]);
 
   const statItems = useMemo(() => [
     { label: '全部申请', value: counts.total, icon: Archive, tone: 'bg-slate-100 text-slate-700' },
@@ -361,16 +514,21 @@ export default function AdministrationPage() {
     { label: '已退宿', value: counts.checkedOut, icon: LogOut, tone: 'bg-slate-100 text-slate-600' },
   ], [counts]);
 
-  const statusPages: Array<{ status: DormitoryStatus; label: string; count: number }> = [
+  const statusPages: Array<{ status: DormitoryListTab; label: string; count: number }> = [
     { status: '待审核', label: '待审核', count: counts.pending },
     { status: '已审核', label: '已审核', count: counts.reviewed },
     { status: '已入住', label: '已入住', count: counts.checkedIn },
     { status: '已退宿', label: '已退宿', count: counts.checkedOut },
+    { status: '删除记录', label: '删除记录', count: deleteRecords.length },
   ];
 
   const selectedRoomBeds = useMemo(() => {
     return beds.filter((bed) => bed.roomNo === roomNo);
   }, [beds, roomNo]);
+
+  const changeRoomBeds = useMemo(() => {
+    return beds.filter((bed) => bed.roomNo === changeRoomNo);
+  }, [beds, changeRoomNo]);
 
   const managementBeds = useMemo(() => {
     const selectedRoom = rooms.find((room) => String(room.id) === bedRoomId);
@@ -411,6 +569,7 @@ export default function AdministrationPage() {
         body: JSON.stringify({
           roomNo: newRoomNo.trim(),
           capacity: Number(newRoomCapacity) || 0,
+          roomType: roomTypeToPayload(newRoomType),
           remark: newRoomRemark.trim(),
         }),
       });
@@ -420,12 +579,58 @@ export default function AdministrationPage() {
       }
       setNewRoomNo('');
       setNewRoomCapacity('');
+      setNewRoomType('未设置');
       setNewRoomRemark('');
       await loadRooms();
     } catch (roomError) {
       alert(roomError instanceof Error ? roomError.message : '添加房号失败');
     } finally {
       setRoomSaving(false);
+    }
+  };
+
+  const openEditRoom = (room: DormitoryRoom) => {
+    setEditingRoom(room);
+    setEditRoomNo(room.roomNo);
+    setEditRoomCapacity(room.capacity ? String(room.capacity) : '');
+    setEditRoomType(normalizeRoomType(room.roomType));
+    setEditRoomRemark(room.remark || '');
+    setRoomEditOpen(true);
+  };
+
+  const updateRoom = async () => {
+    if (!editingRoom) return;
+    if (!editRoomNo.trim()) {
+      alert('请填写房号');
+      return;
+    }
+
+    setRoomUpdating(true);
+    try {
+      const response = await fetch('/api/dormitory/rooms', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingRoom.id,
+          roomNo: editRoomNo.trim(),
+          capacity: Number(editRoomCapacity) || 0,
+          roomType: roomTypeToPayload(editRoomType),
+          remark: editRoomRemark.trim(),
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as MutateResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '修改房号失败');
+      }
+
+      setRoomEditOpen(false);
+      setEditingRoom(null);
+      await loadRooms();
+      await loadBeds();
+    } catch (roomError) {
+      alert(roomError instanceof Error ? roomError.message : '修改房号失败');
+    } finally {
+      setRoomUpdating(false);
     }
   };
 
@@ -518,14 +723,20 @@ export default function AdministrationPage() {
   };
 
   const changeStatusPage = (value: string) => {
-    setActiveStatus(value as DormitoryStatus);
+    const nextStatus = value as DormitoryListTab;
+    setActiveStatus(nextStatus);
     setSelectedId(null);
     setDetailVisible(false);
+    if (nextStatus === '删除记录') {
+      void loadDeleteRecords();
+    }
   };
 
   const showDetail = (record: DormitoryRecord) => {
     setSelectedId(record.id);
     setDetailVisible(true);
+    setRoomChanges([]);
+    void loadRoomChanges(record.id);
   };
 
   const openReview = (record: DormitoryRecord) => {
@@ -556,6 +767,15 @@ export default function AdministrationPage() {
     setKeyReturned(record.keyReturned || '');
     setCheckoutHandlerName(record.checkoutHandlerName || '');
     setCheckOutOpen(true);
+  };
+
+  const openRoomChange = (target: RoomChangeTarget) => {
+    setRoomChangeTarget(target);
+    setChangeRoomNo(target.roomNo || '');
+    setChangeBedNo(target.bedNo || '');
+    setChangeHandlerName('');
+    setChangeReason('');
+    setRoomChangeOpen(true);
   };
 
   const submitReview = async () => {
@@ -651,10 +871,64 @@ export default function AdministrationPage() {
       setSelectedId(null);
       setDetailVisible(false);
       setActiveStatus('已入住');
+      await loadRooms();
+      await loadBeds();
     } catch (checkInError) {
       alert(checkInError instanceof Error ? checkInError.message : '办理入住失败');
     } finally {
       setCheckingIn(false);
+    }
+  };
+
+  const submitRoomChange = async () => {
+    if (!roomChangeTarget) return;
+    if (!changeRoomNo) {
+      alert('请选择新房号');
+      return;
+    }
+    if (!changeBedNo) {
+      alert('请选择新床号');
+      return;
+    }
+    if (!changeHandlerName.trim()) {
+      alert('请填写更换经办人');
+      return;
+    }
+
+    setChangingRoom(true);
+    try {
+      const response = await fetch(`/api/dormitory/${roomChangeTarget.id}/room-change`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomNo: changeRoomNo,
+          bedNo: changeBedNo,
+          handlerName: changeHandlerName.trim(),
+          reason: changeReason.trim(),
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as RoomChangeMutateResponse;
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '更换房号失败');
+      }
+
+      setRoomChangeOpen(false);
+      setRoomChangeTarget(null);
+      setRoomChanges(result.changes || []);
+      await loadRecords();
+      await loadRooms();
+      await loadBeds();
+      if (detailVisible && selectedId === roomChangeTarget.id) {
+        await loadRoomChanges(roomChangeTarget.id);
+      }
+      if (roomDetailOpen && roomDetail) {
+        await openRoomDetail(roomDetail);
+      }
+    } catch (changeError) {
+      alert(changeError instanceof Error ? changeError.message : '更换房号失败');
+    } finally {
+      setChangingRoom(false);
     }
   };
 
@@ -722,6 +996,60 @@ export default function AdministrationPage() {
     window.open(`/api/dormitory/${record.id}/export`, '_blank', 'noopener,noreferrer');
   };
 
+  const exportDeletedRecord = (record: DormitoryDeleteRecord) => {
+    window.open(`/api/dormitory/delete-records/${record.id}/export`, '_blank', 'noopener,noreferrer');
+  };
+
+  const restoreDeletedRecord = async (record: DormitoryDeleteRecord) => {
+    if (!confirm(`确定恢复 ${record.employeeName} 的已退宿记录吗？恢复后会回到“已退宿”列表。`)) return;
+
+    setRestoringDeleteId(record.id);
+    try {
+      const response = await fetch(`/api/dormitory/delete-records/${record.id}/restore`, { method: 'POST' });
+      const result = await response.json().catch(() => ({})) as MutateResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '恢复删除记录失败');
+      }
+
+      await loadDeleteRecords();
+      setActiveStatus('已退宿');
+    } catch (restoreError) {
+      alert(restoreError instanceof Error ? restoreError.message : '恢复删除记录失败');
+    } finally {
+      setRestoringDeleteId(null);
+    }
+  };
+
+  const deleteDormitoryRecord = async (record: DormitoryRecord) => {
+    if (record.status !== '已退宿') {
+      alert('只有已退宿记录可以删除');
+      return;
+    }
+    if (!confirm(`确定删除 ${record.name} 的已退宿记录吗？删除后会保留删除记录 1 个月。`)) return;
+
+    setDeletingRecordId(record.id);
+    try {
+      const response = await fetch(`/api/dormitory/${record.id}`, { method: 'DELETE' });
+      const result = await response.json().catch(() => ({})) as MutateResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '删除住宿记录失败');
+      }
+
+      if (selectedId === record.id) {
+        setSelectedId(null);
+        setDetailVisible(false);
+      }
+      await loadRecords();
+      if (activeStatus === '删除记录') {
+        await loadDeleteRecords();
+      }
+    } catch (deleteError) {
+      alert(deleteError instanceof Error ? deleteError.message : '删除住宿记录失败');
+    } finally {
+      setDeletingRecordId(null);
+    }
+  };
+
   const openWaterRecords = () => {
     setWaterOpen(true);
     void loadWaterRecords();
@@ -787,7 +1115,7 @@ export default function AdministrationPage() {
       <div className="mb-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_auto] md:items-end">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">姓名 / 手机号 / 身份证号 / 部门 / 职位</label>
+            <label className="text-sm font-medium text-slate-700">姓名 / 手机号 / 身份证号 / 部门 / 职位 / 删除人</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
@@ -830,11 +1158,13 @@ export default function AdministrationPage() {
             <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-base font-semibold text-slate-950">{activeStatus}列表</h2>
-                <p className="mt-1 text-sm text-slate-500">当前展示 {records.length} 条记录</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  当前展示 {activeStatus === '删除记录' ? filteredDeleteRecords.length : records.length} 条记录
+                </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Tabs value={activeStatus} onValueChange={changeStatusPage}>
-                  <TabsList className="grid h-10 grid-cols-4 bg-slate-100 p-1">
+                  <TabsList className="grid h-10 grid-cols-5 bg-slate-100 p-1">
                     {statusPages.map((item) => (
                       <TabsTrigger key={item.status} value={item.status} className="min-w-24 px-3 text-sm">
                         {item.label}
@@ -843,8 +1173,13 @@ export default function AdministrationPage() {
                     ))}
                   </TabsList>
                 </Tabs>
-                <Button variant="outline" size="sm" onClick={() => void loadRecords()} disabled={loading}>
-                  <RefreshCcw className={cn('h-4 w-4', loading && 'animate-spin')} />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => activeStatus === '删除记录' ? void loadDeleteRecords() : void loadRecords()}
+                  disabled={activeStatus === '删除记录' ? deleteRecordsLoading : loading}
+                >
+                  <RefreshCcw className={cn('h-4 w-4', (activeStatus === '删除记录' ? deleteRecordsLoading : loading) && 'animate-spin')} />
                   刷新
                 </Button>
               </div>
@@ -852,90 +1187,174 @@ export default function AdministrationPage() {
 
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50/80">
-                    <TableHead className="w-14">序号</TableHead>
-                    <TableHead>姓名</TableHead>
-                    <TableHead>手机号</TableHead>
-                    <TableHead>部门/职位</TableHead>
-                    <TableHead>安排入住日期</TableHead>
-                    <TableHead>宿舍房/床号</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>提交时间</TableHead>
-                    <TableHead className="min-w-64">操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading && (
-                    <TableRow>
-                      <TableCell colSpan={9} className="h-28 text-center text-sm text-slate-500">
-                        <span className="inline-flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          正在加载住宿申请...
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {!loading && records.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={9} className="h-28 text-center text-sm text-slate-500">
-                        暂无{activeStatus}记录
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {!loading && records.map((record, index) => (
-                    <TableRow
-                      key={record.id}
-                      className={cn(selectedRecord?.id === record.id && detailVisible && 'bg-blue-50/60')}
-                    >
-                      <TableCell>{index + 1}</TableCell>
-                      <TableCell className="font-medium">{record.name}</TableCell>
-                      <TableCell>{maskPhone(record.phone)}</TableCell>
-                      <TableCell>{[record.department, record.position].filter(Boolean).join(' / ') || '-'}</TableCell>
-                      <TableCell>{formatDate(record.expectedCheckInDate)}</TableCell>
-                      <TableCell>{display(record.roomBed)}</TableCell>
-                      <TableCell><StatusBadge status={record.status} /></TableCell>
-                      <TableCell>{formatDateTime(record.createdAt)}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => showDetail(record)}>
-                            查看
-                          </button>
-                          {record.status === '待审核' && (
-                            <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => openReview(record)}>
-                              审核
-                            </button>
-                          )}
-                          {record.status === '已审核' && (
-                            <button type="button" className="text-sm font-medium text-emerald-600 hover:text-emerald-700" onClick={() => openCheckIn(record)}>
-                              办理入住
-                            </button>
-                          )}
-                          {record.status === '已入住' && (
-                            <>
-                              <button type="button" className="text-sm font-medium text-slate-700 hover:text-slate-950" onClick={() => openCheckOut(record)}>
-                                办理退宿舍
-                              </button>
-                              <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => exportRecord(record)}>
+                {activeStatus === '删除记录' ? (
+                  <>
+                    <TableHeader>
+                      <TableRow className="bg-slate-50/80">
+                        <TableHead className="w-14">序号</TableHead>
+                        <TableHead>员工</TableHead>
+                        <TableHead>手机号</TableHead>
+                        <TableHead>部门/职位</TableHead>
+                        <TableHead>宿舍房/床号</TableHead>
+                        <TableHead>删除人</TableHead>
+                        <TableHead>删除时间</TableHead>
+                        <TableHead>自动清理倒计时</TableHead>
+                        <TableHead className="min-w-40">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {deleteRecordsLoading && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="h-28 text-center text-sm text-slate-500">
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              正在加载删除记录...
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {!deleteRecordsLoading && filteredDeleteRecords.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="h-28 text-center text-sm text-slate-500">
+                            最近 1 个月暂无删除记录
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {!deleteRecordsLoading && filteredDeleteRecords.map((record, index) => (
+                        <TableRow key={record.id}>
+                          <TableCell>{index + 1}</TableCell>
+                          <TableCell className="font-medium">{record.employeeName}</TableCell>
+                          <TableCell>{maskPhone(record.phone)}</TableCell>
+                          <TableCell>{[record.department, record.position].filter(Boolean).join(' / ') || '-'}</TableCell>
+                          <TableCell>{display(record.roomBed || [record.roomNo, record.bedNo].filter(Boolean).join('-'))}</TableCell>
+                          <TableCell>{record.deletedByName}</TableCell>
+                          <TableCell>{formatDateTime(record.deletedAt)}</TableCell>
+                          <TableCell>
+                            <div className="font-medium text-amber-700">{formatDeleteCountdown(record.expiresAt, countdownNow)}</div>
+                            <div className="text-xs text-slate-500">到期：{formatDateTime(record.expiresAt)}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => exportDeletedRecord(record)}>
                                 导出
                               </button>
-                            </>
-                          )}
-                          {record.status === '已退宿' && (
-                            <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => exportRecord(record)}>
-                              导出
-                            </button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-sm font-medium text-emerald-600 hover:text-emerald-700 disabled:cursor-not-allowed disabled:text-slate-300"
+                                disabled={restoringDeleteId === record.id}
+                                onClick={() => void restoreDeletedRecord(record)}
+                              >
+                                {restoringDeleteId === record.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                恢复
+                              </button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </>
+                ) : (
+                  <>
+                    <TableHeader>
+                      <TableRow className="bg-slate-50/80">
+                        <TableHead className="w-14">序号</TableHead>
+                        <TableHead>姓名</TableHead>
+                        <TableHead>手机号</TableHead>
+                        <TableHead>部门/职位</TableHead>
+                        <TableHead>安排入住日期</TableHead>
+                        <TableHead>宿舍房/床号</TableHead>
+                        <TableHead>状态</TableHead>
+                        <TableHead>提交时间</TableHead>
+                        <TableHead className="min-w-64">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loading && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="h-28 text-center text-sm text-slate-500">
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              正在加载住宿申请...
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {!loading && records.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="h-28 text-center text-sm text-slate-500">
+                            暂无{activeStatus}记录
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {!loading && records.map((record, index) => (
+                        <TableRow
+                          key={record.id}
+                          className={cn(selectedRecord?.id === record.id && detailVisible && 'bg-blue-50/60')}
+                        >
+                          <TableCell>{index + 1}</TableCell>
+                          <TableCell className="font-medium">{record.name}</TableCell>
+                          <TableCell>{maskPhone(record.phone)}</TableCell>
+                          <TableCell>{[record.department, record.position].filter(Boolean).join(' / ') || '-'}</TableCell>
+                          <TableCell>{formatDate(record.expectedCheckInDate)}</TableCell>
+                          <TableCell>{display(record.roomBed)}</TableCell>
+                          <TableCell><StatusBadge status={record.status} /></TableCell>
+                          <TableCell>{formatDateTime(record.createdAt)}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => showDetail(record)}>
+                                查看
+                              </button>
+                              {record.status === '待审核' && (
+                                <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => openReview(record)}>
+                                  审核
+                                </button>
+                              )}
+                              {record.status === '已审核' && (
+                                <button type="button" className="text-sm font-medium text-emerald-600 hover:text-emerald-700" onClick={() => openCheckIn(record)}>
+                                  办理入住
+                                </button>
+                              )}
+                              {record.status === '已入住' && (
+                                <>
+                                  <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => openRoomChange(record)}>
+                                    更改房号
+                                  </button>
+                                  <button type="button" className="text-sm font-medium text-slate-700 hover:text-slate-950" onClick={() => openCheckOut(record)}>
+                                    办理退宿舍
+                                  </button>
+                                  <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => exportRecord(record)}>
+                                    导出
+                                  </button>
+                                </>
+                              )}
+                              {record.status === '已退宿' && (
+                                <>
+                                  <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => exportRecord(record)}>
+                                    导出
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 text-sm font-medium text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:text-slate-300"
+                                    disabled={deletingRecordId === record.id}
+                                    onClick={() => void deleteDormitoryRecord(record)}
+                                  >
+                                    {deletingRecordId === record.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                    删除
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </>
+                )}
               </Table>
             </div>
             <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-              <span>共 {records.length} 条</span>
-              <span>办理入住后可导出 Excel 住宿申请表，退宿后会补齐表格下半部分</span>
+              <span>共 {activeStatus === '删除记录' ? filteredDeleteRecords.length : records.length} 条</span>
+              <span>{activeStatus === '删除记录' ? '删除记录保留 1 个月，到期自动清理；可在到期前恢复或导出。' : '办理入住后可导出 Excel 住宿申请表，退宿后会补齐表格下半部分'}</span>
             </div>
           </div>
         </div>
@@ -996,6 +1415,42 @@ export default function AdministrationPage() {
                   ]}
                 />
               </section>
+              {(selectedRecord.status === '已入住' || roomChanges.length > 0) && (
+                <section className="border-b border-slate-100 px-5 py-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-slate-950">更换记录</h3>
+                    {selectedRecord.status === '已入住' && (
+                      <Button variant="outline" size="sm" onClick={() => openRoomChange(selectedRecord)}>
+                        <RefreshCcw className="h-4 w-4" />
+                        更改房号
+                      </Button>
+                    )}
+                  </div>
+                  {roomChangesLoading ? (
+                    <div className="inline-flex items-center gap-2 text-sm text-slate-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      正在加载更换记录...
+                    </div>
+                  ) : roomChanges.length === 0 ? (
+                    <p className="text-sm text-slate-500">暂无更换记录</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {roomChanges.map((change) => (
+                        <div key={change.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm">
+                          <div className="font-medium text-slate-900">
+                            {display(change.fromRoomBed)} → {display(change.toRoomBed)}
+                          </div>
+                          <div className="mt-2 grid gap-1 text-slate-600">
+                            <span>经办人：{display(change.handlerName)}</span>
+                            <span>原因：{display(change.reason)}</span>
+                            <span>更换时间：{formatDateTime(change.changedAt)}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
               {selectedRecord.status === '已退宿' && (
                 <section className="border-b border-slate-100 px-5 py-4">
                   <h3 className="mb-3 text-sm font-semibold text-slate-950">退宿办理</h3>
@@ -1026,6 +1481,10 @@ export default function AdministrationPage() {
                 )}
                 {selectedRecord.status === '已入住' && (
                   <>
+                    <Button variant="outline" className="flex-1" onClick={() => openRoomChange(selectedRecord)}>
+                      <RefreshCcw className="h-4 w-4" />
+                      更改房号
+                    </Button>
                     <Button variant="outline" className="flex-1" onClick={() => openCheckOut(selectedRecord)}>
                       <LogOut className="h-4 w-4" />
                       办理退宿舍
@@ -1037,10 +1496,21 @@ export default function AdministrationPage() {
                   </>
                 )}
                 {selectedRecord.status === '已退宿' && (
-                  <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => exportRecord(selectedRecord)}>
-                    <Download className="h-4 w-4" />
-                    导出申请表
-                  </Button>
+                  <>
+                    <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => exportRecord(selectedRecord)}>
+                      <Download className="h-4 w-4" />
+                      导出申请表
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      disabled={deletingRecordId === selectedRecord.id}
+                      onClick={() => void deleteDormitoryRecord(selectedRecord)}
+                    >
+                      {deletingRecordId === selectedRecord.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      删除记录
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -1100,7 +1570,7 @@ export default function AdministrationPage() {
               维护宿舍房号和最大可住人数，用于判断房间是否住满。
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 md:grid-cols-[1fr_140px_1fr_auto] md:items-end">
+          <div className="grid gap-3 md:grid-cols-[1fr_120px_150px_1fr_auto] md:items-end">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-slate-700">房号</label>
               <Input value={newRoomNo} onChange={(event) => setNewRoomNo(event.target.value)} placeholder="例如：A栋302" />
@@ -1110,8 +1580,19 @@ export default function AdministrationPage() {
               <Input value={newRoomCapacity} onChange={(event) => setNewRoomCapacity(event.target.value)} placeholder="例如：4" inputMode="numeric" />
             </div>
             <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">寝室类型</label>
+              <Select value={newRoomType} onValueChange={setNewRoomType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {roomTypeOptions.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <label className="text-sm font-medium text-slate-700">备注</label>
-              <Input value={newRoomRemark} onChange={(event) => setNewRoomRemark(event.target.value)} placeholder="可选" />
+              <Input value={newRoomRemark} onChange={(event) => setNewRoomRemark(event.target.value)} placeholder="可填写其他备注" />
             </div>
             <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => void addRoom()} disabled={roomSaving}>
               {roomSaving && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -1126,15 +1607,16 @@ export default function AdministrationPage() {
                   <TableHead>房号</TableHead>
                   <TableHead>已住/可住</TableHead>
                   <TableHead>床位数</TableHead>
+                  <TableHead>寝室类型</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>备注</TableHead>
-                  <TableHead className="w-36">操作</TableHead>
+                  <TableHead className="w-48">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rooms.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-sm text-slate-500">
+                    <TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500">
                       暂无房号
                     </TableCell>
                   </TableRow>
@@ -1144,6 +1626,7 @@ export default function AdministrationPage() {
                     <TableCell className="font-medium">{room.roomNo}</TableCell>
                     <TableCell>{room.occupiedCount}/{room.capacity || room.bedCount || '-'}</TableCell>
                     <TableCell>{room.bedCount}</TableCell>
+                    <TableCell>{normalizeRoomType(room.roomType)}</TableCell>
                     <TableCell>
                       <span className={cn('inline-flex rounded-md px-2 py-1 text-xs font-medium ring-1', room.isFull ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-emerald-50 text-emerald-700 ring-emerald-200')}>
                         {room.isFull ? '已住满' : '未住满'}
@@ -1154,6 +1637,10 @@ export default function AdministrationPage() {
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => void openRoomDetail(room)}>
                           详细
+                        </button>
+                        <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-slate-700 hover:text-slate-950" onClick={() => openEditRoom(room)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                          修改
                         </button>
                         <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-red-600 hover:text-red-700" onClick={() => void deleteRoom(room)}>
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1174,6 +1661,58 @@ export default function AdministrationPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={roomEditOpen} onOpenChange={setRoomEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>修改房号</DialogTitle>
+            <DialogDescription>
+              可调整可住人数、寝室类型和备注；已有住宿或水表记录的房号不能直接改房号。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">
+                房号<span className="text-red-500">*</span>
+              </label>
+              <Input value={editRoomNo} onChange={(event) => setEditRoomNo(event.target.value)} placeholder="例如：A栋302" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">可住人数</label>
+              <Input value={editRoomCapacity} onChange={(event) => setEditRoomCapacity(event.target.value)} placeholder="例如：4" inputMode="numeric" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">寝室类型</label>
+              <Select value={editRoomType} onValueChange={setEditRoomType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {roomTypeOptions.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">备注</label>
+              <Textarea
+                value={editRoomRemark}
+                onChange={(event) => setEditRoomRemark(event.target.value)}
+                placeholder="可填写其他备注"
+                className="min-h-24"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoomEditOpen(false)} disabled={roomUpdating}>
+              取消
+            </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => void updateRoom()} disabled={roomUpdating}>
+              {roomUpdating && <Loader2 className="h-4 w-4 animate-spin" />}
+              保存修改
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={roomDetailOpen} onOpenChange={setRoomDetailOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
@@ -1183,7 +1722,7 @@ export default function AdministrationPage() {
             </DialogDescription>
           </DialogHeader>
           {roomDetail && (
-            <div className="grid gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm sm:grid-cols-4">
+            <div className="grid gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
               <div>
                 <p className="text-slate-500">房号</p>
                 <p className="mt-1 font-semibold text-slate-950">{roomDetail.roomNo}</p>
@@ -1200,6 +1739,14 @@ export default function AdministrationPage() {
                 <p className="text-slate-500">状态</p>
                 <p className="mt-1 font-semibold text-slate-950">{roomDetail.isFull ? '已住满' : '未住满'}</p>
               </div>
+              <div>
+                <p className="text-slate-500">寝室类型</p>
+                <p className="mt-1 font-semibold text-slate-950">{normalizeRoomType(roomDetail.roomType)}</p>
+              </div>
+              <div>
+                <p className="text-slate-500">备注</p>
+                <p className="mt-1 font-semibold text-slate-950">{display(roomDetail.remark)}</p>
+              </div>
             </div>
           )}
 
@@ -1214,12 +1761,13 @@ export default function AdministrationPage() {
                   <TableHead>入住时间</TableHead>
                   <TableHead>领用钥匙</TableHead>
                   <TableHead>经办人</TableHead>
+                  <TableHead className="w-20">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {roomResidentsLoading && (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500">
+                    <TableCell colSpan={8} className="h-24 text-center text-sm text-slate-500">
                       <span className="inline-flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         正在加载入住人员...
@@ -1229,7 +1777,7 @@ export default function AdministrationPage() {
                 )}
                 {!roomResidentsLoading && roomResidents.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500">
+                    <TableCell colSpan={8} className="h-24 text-center text-sm text-slate-500">
                       当前暂无入住人员
                     </TableCell>
                   </TableRow>
@@ -1243,6 +1791,15 @@ export default function AdministrationPage() {
                     <TableCell>{formatDateTime(resident.checkedInAt)}</TableCell>
                     <TableCell>{display(resident.keyIssued)}</TableCell>
                     <TableCell>{display(resident.handlerName)}</TableCell>
+                    <TableCell>
+                      <button
+                        type="button"
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                        onClick={() => openRoomChange({ ...resident, roomNo: roomDetail?.roomNo || null })}
+                      >
+                        更改
+                      </button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1408,7 +1965,9 @@ export default function AdministrationPage() {
                 <SelectTrigger><SelectValue placeholder="请选择房号" /></SelectTrigger>
                 <SelectContent>
                   {rooms.map((room) => (
-                    <SelectItem key={room.id} value={String(room.id)}>{room.roomNo}</SelectItem>
+                    <SelectItem key={room.id} value={String(room.id)}>
+                      {room.roomNo}{room.roomType ? ` / ${room.roomType}` : ''}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1513,7 +2072,7 @@ export default function AdministrationPage() {
                 <SelectContent>
                   {rooms.map((room) => (
                     <SelectItem key={room.id} value={room.roomNo}>
-                      {room.roomNo}（已住 {room.occupiedCount}/{room.capacity || room.bedCount || '-'}）
+                      {room.roomNo}{room.roomType ? ` / ${room.roomType}` : ''}（已住 {room.occupiedCount}/{room.capacity || room.bedCount || '-'}）
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1527,8 +2086,8 @@ export default function AdministrationPage() {
                 <SelectTrigger><SelectValue placeholder={roomNo ? '请选择床号' : '请先选择房号'} /></SelectTrigger>
                 <SelectContent>
                   {selectedRoomBeds.map((bed) => (
-                    <SelectItem key={bed.id} value={bed.bedNo} disabled={Boolean(bed.occupiedRecordId)}>
-                      {bed.bedNo}{bed.occupiedByName ? `（已入住：${bed.occupiedByName}）` : ''}
+                    <SelectItem key={bed.id} value={bed.bedNo} disabled={Boolean(bed.occupiedRecordId && bed.occupiedRecordId !== reviewTarget?.id)}>
+                      {bed.bedNo}{bed.occupiedByName ? `（已分配：${bed.occupiedByName}）` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1589,7 +2148,7 @@ export default function AdministrationPage() {
                 <SelectContent>
                   {rooms.map((room) => (
                     <SelectItem key={room.id} value={room.roomNo}>
-                      {room.roomNo}（已住 {room.occupiedCount}/{room.capacity || room.bedCount || '-'}）
+                      {room.roomNo}{room.roomType ? ` / ${room.roomType}` : ''}（已住 {room.occupiedCount}/{room.capacity || room.bedCount || '-'}）
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1603,8 +2162,8 @@ export default function AdministrationPage() {
                 <SelectTrigger><SelectValue placeholder={roomNo ? '请选择床号' : '请先选择房号'} /></SelectTrigger>
                 <SelectContent>
                   {selectedRoomBeds.map((bed) => (
-                    <SelectItem key={bed.id} value={bed.bedNo} disabled={Boolean(bed.occupiedRecordId)}>
-                      {bed.bedNo}{bed.occupiedByName ? `（已入住：${bed.occupiedByName}）` : ''}
+                    <SelectItem key={bed.id} value={bed.bedNo} disabled={Boolean(bed.occupiedRecordId && bed.occupiedRecordId !== checkInTarget?.id)}>
+                      {bed.bedNo}{bed.occupiedByName ? `（已分配：${bed.occupiedByName}）` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1636,6 +2195,84 @@ export default function AdministrationPage() {
             <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={submitCheckIn} disabled={checkingIn}>
               {checkingIn && <Loader2 className="h-4 w-4 animate-spin" />}
               完成入住
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={roomChangeOpen} onOpenChange={setRoomChangeOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>更改房号</DialogTitle>
+            <DialogDescription>
+              更改后会更新该员工当前入住房号，并自动保存更换记录。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              {roomChangeTarget
+                ? `${roomChangeTarget.name} / 当前：${display(roomChangeTarget.roomBed || [roomChangeTarget.roomNo, roomChangeTarget.bedNo].filter(Boolean).join('-'))}`
+                : '未选择入住记录'}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">
+                新房号<span className="text-red-500">*</span>
+              </label>
+              <Select
+                value={changeRoomNo}
+                onValueChange={(value) => {
+                  setChangeRoomNo(value);
+                  setChangeBedNo('');
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="请选择新房号" /></SelectTrigger>
+                <SelectContent>
+                  {rooms.map((room) => (
+                    <SelectItem key={room.id} value={room.roomNo}>
+                      {room.roomNo}{room.roomType ? ` / ${room.roomType}` : ''}（已住 {room.occupiedCount}/{room.capacity || room.bedCount || '-'}）
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">
+                新床号<span className="text-red-500">*</span>
+              </label>
+              <Select value={changeBedNo} onValueChange={setChangeBedNo} disabled={!changeRoomNo}>
+                <SelectTrigger><SelectValue placeholder={changeRoomNo ? '请选择新床号' : '请先选择新房号'} /></SelectTrigger>
+                <SelectContent>
+                  {changeRoomBeds.map((bed) => (
+                    <SelectItem key={bed.id} value={bed.bedNo} disabled={Boolean(bed.occupiedRecordId && bed.occupiedRecordId !== roomChangeTarget?.id)}>
+                      {bed.bedNo}{bed.occupiedByName ? `（已分配：${bed.occupiedByName}）` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">
+                更换经办人<span className="text-red-500">*</span>
+              </label>
+              <Input value={changeHandlerName} onChange={(event) => setChangeHandlerName(event.target.value)} placeholder="请填写经办人姓名" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">更换原因</label>
+              <Textarea
+                value={changeReason}
+                onChange={(event) => setChangeReason(event.target.value)}
+                placeholder="例如：员工申请调换至502房"
+                className="min-h-24"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoomChangeOpen(false)} disabled={changingRoom}>
+              取消
+            </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => void submitRoomChange()} disabled={changingRoom}>
+              {changingRoom && <Loader2 className="h-4 w-4 animate-spin" />}
+              保存更改
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/database';
 import { verifyToken } from '@/lib/auth';
+import { formatChinaDateTime } from '@/lib/china-time';
 
 // 生成随机注册码
 function generateRegistrationCode(): string {
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (expireHours > 0) {
       const expireDate = new Date();
       expireDate.setHours(expireDate.getHours() + expireHours);
-      expiresAt = expireDate.toISOString().replace('T', ' ').substring(0, 19);
+      expiresAt = formatChinaDateTime(expireDate);
     }
     
     for (let i = 0; i < Math.min(count, 10); i++) {

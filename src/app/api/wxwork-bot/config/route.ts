@@ -58,8 +58,8 @@ export async function POST(request: NextRequest) {
     if (existing) {
       // 更新现有记录
       db!.prepare(`
-        UPDATE wxwork_bot_config 
-        SET bot_id = ?, bot_secret = ?, api_url = ?, auth_token = ?, deepseek_api_key = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP 
+        UPDATE wxwork_bot_config
+        SET bot_id = ?, bot_secret = ?, api_url = ?, auth_token = ?, deepseek_api_key = ?, enabled = ?, updated_at = datetime('now', '+8 hours')
         WHERE id = 1
       `).run(botId || '', botSecret || '', apiUrl || '', authToken || '', deepSeekApiKey || '', enabled ? 1 : 0);
     } else {

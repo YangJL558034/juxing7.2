@@ -1,4 +1,5 @@
 import { db } from '@/lib/database';
+import { formatChinaDateTime } from '@/lib/china-time';
 
 /**
  * 清理35天前的日志
@@ -11,7 +12,7 @@ export function cleanupOldLogs(tableName: 'operation_logs' | 'chat_messages') {
     cutoffDate.setDate(cutoffDate.getDate() - 35);
     
     // 格式化日期为 SQLite 格式 (YYYY-MM-DD HH:MM:SS)
-    const cutoffDateStr = cutoffDate.toISOString().slice(0, 19).replace('T', ' ');
+    const cutoffDateStr = formatChinaDateTime(cutoffDate);
     
     console.log(`清理${tableName}表中${cutoffDateStr}之前的记录...`);
     

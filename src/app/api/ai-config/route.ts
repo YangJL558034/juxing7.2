@@ -49,8 +49,8 @@ export async function POST(request: NextRequest) {
     
     if (existing) {
       db!.prepare(`
-        UPDATE ai_config 
-        SET deepseek_api_key = ?, doubao_api_key = ?, doubao_secret = ?, default_provider = ?, updated_at = CURRENT_TIMESTAMP 
+        UPDATE ai_config
+        SET deepseek_api_key = ?, doubao_api_key = ?, doubao_secret = ?, default_provider = ?, updated_at = datetime('now', '+8 hours')
         WHERE id = 1
       `).run(deepSeekApiKey || '', doubaoApiKey || '', doubaoSecret || '', defaultProvider || 'deepseek');
     } else {

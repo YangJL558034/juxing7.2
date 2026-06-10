@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/accordion';
 import { Search, FileText, User, Monitor, Globe, Calendar, ChevronDown, RefreshCw } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { formatChinaDateTime, parseChinaTime } from '@/lib/china-time';
 
 interface OperationLog {
   id: number;
@@ -130,15 +131,7 @@ export default function OperationLogsPage() {
   };
 
   const formatDateTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
+    return formatChinaDateTime(dateStr);
   };
 
   const filteredLogs = logs.filter((log) => {
@@ -157,7 +150,7 @@ export default function OperationLogsPage() {
     const groups: { [key: string]: OperationLog[] } = {};
     
     filteredLogs.forEach(log => {
-      const date = new Date(log.created_at);
+      const date = parseChinaTime(log.created_at) || new Date(log.created_at);
       const year = date.getFullYear();
       const month = date.getMonth() + 1;
       const key = `${year}年${month}月`;
@@ -179,7 +172,7 @@ export default function OperationLogsPage() {
     return sortedKeys.map(key => ({
       key,
       logs: groups[key].sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        (parseChinaTime(b.created_at)?.getTime() || 0) - (parseChinaTime(a.created_at)?.getTime() || 0)
       )
     }));
   }, [filteredLogs]);

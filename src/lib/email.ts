@@ -1,5 +1,6 @@
 import { db } from './database';
 import * as nodemailer from 'nodemailer';
+import { formatChinaDateTime, parseChinaTime } from './china-time';
 
 interface SmtpConfig {
   host: string;
@@ -22,7 +23,7 @@ export function saveVerificationCode(email: string, code: string, type: string):
   db.prepare(`
     INSERT INTO verification_codes (email, code, type, created_at, expires_at)
     VALUES (?, ?, ?, ?, ?)
-  `).run(email, code, type, now.toISOString(), expiresAt.toISOString());
+  `).run(email, code, type, formatChinaDateTime(now), formatChinaDateTime(expiresAt));
 }
 
 // 验证验证码
@@ -39,7 +40,7 @@ export function verifyCode(email: string, code: string): boolean {
   }
   
   // 检查验证码是否在5分钟内有效
-  const created = new Date(record.created_at);
+  const created = parseChinaTime(record.created_at) || new Date(record.created_at);
   const now = new Date();
   const diff = (now.getTime() - created.getTime()) / 1000 / 60;
   

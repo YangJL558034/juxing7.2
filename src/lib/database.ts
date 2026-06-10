@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
+import { chinaNowSql, formatChinaDateTime } from './china-time';
 
 // 检测是否在构建环境中 - 只在 Next.js 构建阶段返回 true
 const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build';
@@ -21,8 +22,7 @@ let _isInitialized = false;
 const backupSchedulerKey = '__crmDatabaseBackupSchedulerStarted';
 
 function backupLocalDateTime() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+  return chinaNowSql();
 }
 
 async function runScheduledDatabaseBackup(dbInstance: Database.Database) {
@@ -57,7 +57,7 @@ async function runScheduledDatabaseBackup(dbInstance: Database.Database) {
     `).run(fileName, filePath, info.size, backupTime);
     dbInstance.prepare(`
       UPDATE database_backup_settings
-      SET last_backup_at = ?, last_backup_file = ?, updated_at = CURRENT_TIMESTAMP
+      SET last_backup_at = ?, last_backup_file = ?, updated_at = datetime('now', '+8 hours')
       WHERE id = 1
     `).run(backupTime, fileName);
   } catch (error) {
@@ -76,6 +76,175 @@ function startDatabaseBackupScheduler(dbInstance: Database.Database) {
   setInterval(() => {
     void runScheduledDatabaseBackup(dbInstance);
   }, 30 * 60 * 1000);
+}
+
+const chinaTimestampSql = "datetime('now', '+8 hours')";
+const timestampColumns = [
+  'created_at',
+  'updated_at',
+  'deleted_at',
+  'changed_at',
+  'reviewed_at',
+  'checked_in_at',
+  'checked_out_at',
+  'signature_time',
+  'read_at',
+  'used_at',
+  'completed_at',
+];
+
+function quoteIdentifier(value: string) {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function ensureChinaTimeTriggers(dbInstance: Database.Database) {
+  const tables = dbInstance.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table'
+      AND name NOT LIKE 'sqlite_%'
+  `).all() as { name: string }[];
+
+  for (const table of tables) {
+    const columns = dbInstance.prepare(`PRAGMA table_info(${quoteIdentifier(table.name)})`).all() as { name: string; pk: number }[];
+    const hasId = columns.some(col => col.name === 'id' && col.pk > 0);
+    if (!hasId) continue;
+
+    const existingTimestampColumns = timestampColumns.filter(col => columns.some(column => column.name === col));
+    if (existingTimestampColumns.length === 0) continue;
+
+    const tableName = quoteIdentifier(table.name);
+    const insertAssignments = existingTimestampColumns.map(col => {
+      const columnName = quoteIdentifier(col);
+      return `${columnName} = CASE WHEN NEW.${columnName} IS NULL OR NEW.${columnName} = CURRENT_TIMESTAMP THEN ${chinaTimestampSql} ELSE NEW.${columnName} END`;
+    });
+    const updateAssignments = existingTimestampColumns
+      .filter(col => col !== 'created_at')
+      .map(col => {
+        const columnName = quoteIdentifier(col);
+        if (col === 'updated_at') {
+          return `${columnName} = ${chinaTimestampSql}`;
+        }
+        return `${columnName} = CASE WHEN NEW.${columnName} = CURRENT_TIMESTAMP THEN ${chinaTimestampSql} ELSE NEW.${columnName} END`;
+      });
+
+    if (insertAssignments.length > 0) {
+      dbInstance.exec(`
+        CREATE TRIGGER IF NOT EXISTS ${quoteIdentifier(`trg_${table.name}_china_time_insert`)}
+        AFTER INSERT ON ${tableName}
+        FOR EACH ROW
+        BEGIN
+          UPDATE ${tableName}
+          SET ${insertAssignments.join(', ')}
+          WHERE id = NEW.id;
+        END;
+      `);
+    }
+
+    if (updateAssignments.length > 0) {
+      dbInstance.exec(`
+        CREATE TRIGGER IF NOT EXISTS ${quoteIdentifier(`trg_${table.name}_china_time_update`)}
+        AFTER UPDATE ON ${tableName}
+        FOR EACH ROW
+        BEGIN
+          UPDATE ${tableName}
+          SET ${updateAssignments.join(', ')}
+          WHERE id = NEW.id;
+        END;
+      `);
+    }
+  }
+}
+
+function ensureOperationLogsChinaTimeMigration(dbInstance: Database.Database) {
+  dbInstance.exec(`
+    CREATE TABLE IF NOT EXISTS app_time_migrations (
+      key TEXT PRIMARY KEY,
+      created_at DATETIME DEFAULT (datetime('now', '+8 hours'))
+    )
+  `);
+
+  const key = 'operation_logs_utc_to_china_20260610';
+  const migrated = dbInstance.prepare('SELECT key FROM app_time_migrations WHERE key = ?').get(key);
+  if (migrated) return;
+
+  const row = dbInstance
+    .prepare('SELECT MAX(id) as max_id FROM operation_logs WHERE created_at IS NOT NULL AND created_at <= CURRENT_TIMESTAMP')
+    .get() as { max_id: number | null } | undefined;
+
+  if (row?.max_id) {
+    dbInstance
+      .prepare("UPDATE operation_logs SET created_at = datetime(created_at, '+8 hours') WHERE id <= ?")
+      .run(row.max_id);
+  }
+
+  dbInstance.prepare('INSERT INTO app_time_migrations (key) VALUES (?)').run(key);
+}
+
+function ensureEmployeeSalaryLocationMigration(dbInstance: Database.Database) {
+  dbInstance.exec(`
+    CREATE TABLE IF NOT EXISTS app_time_migrations (
+      key TEXT PRIMARY KEY,
+      created_at DATETIME DEFAULT (datetime('now', '+8 hours'))
+    )
+  `);
+
+  const key = 'employees_salary_location_repair_20260610';
+  const migrated = dbInstance.prepare('SELECT key FROM app_time_migrations WHERE key = ?').get(key);
+  if (migrated) return;
+
+  dbInstance.exec(`
+    UPDATE employees
+    SET location = CAST(X'E58A9EE585ACE5AEA4' AS TEXT)
+    WHERE location IS NULL
+       OR TRIM(location) = ''
+       OR location = '???'
+       OR location NOT IN (
+         CAST(X'E58A9EE585ACE5AEA4' AS TEXT),
+         'office',
+         CAST(X'E8BDA6E997B4' AS TEXT),
+         'workshop'
+       );
+
+    UPDATE employees
+    SET status = CAST(X'E7A6BBE8818C' AS TEXT),
+        resign_date = COALESCE(resign_date, date('now', '+8 hours'))
+    WHERE EXISTS (
+      SELECT 1
+      FROM onboarding_records o
+      WHERE o.status = CAST(X'E5B7B2E7A6BBE8818C' AS TEXT)
+        AND (
+          (o.employee_id IS NOT NULL AND o.employee_id = employees.id)
+          OR (o.id_card IS NOT NULL AND o.id_card <> '' AND employees.id_card IS NOT NULL AND employees.id_card <> '' AND o.id_card = employees.id_card)
+          OR o.name = employees.name
+        )
+    );
+  `);
+
+  dbInstance.prepare('INSERT INTO app_time_migrations (key) VALUES (?)').run(key);
+}
+
+function ensureProductionEmployeesWorkshopMigration(dbInstance: Database.Database) {
+  dbInstance.exec(`
+    CREATE TABLE IF NOT EXISTS app_time_migrations (
+      key TEXT PRIMARY KEY,
+      created_at DATETIME DEFAULT (datetime('now', '+8 hours'))
+    )
+  `);
+
+  const key = 'employees_production_department_to_workshop_20260610';
+  const migrated = dbInstance.prepare('SELECT key FROM app_time_migrations WHERE key = ?').get(key);
+  if (migrated) return;
+
+  dbInstance.exec(`
+    UPDATE employees
+    SET location = CAST(X'E8BDA6E997B4' AS TEXT)
+    WHERE REPLACE(REPLACE(COALESCE(department, ''), ' ', ''), CHAR(9), '') = CAST(X'E7949FE4BAA7E983A8' AS TEXT)
+       OR REPLACE(REPLACE(COALESCE(department, ''), ' ', ''), CHAR(9), '') LIKE CAST(X'E7949FE4BAA7' AS TEXT) || '%'
+       OR REPLACE(REPLACE(COALESCE(department, ''), ' ', ''), CHAR(9), '') LIKE '%' || CAST(X'E8BDA6E997B4' AS TEXT) || '%';
+  `);
+
+  dbInstance.prepare('INSERT INTO app_time_migrations (key) VALUES (?)').run(key);
 }
 
 function getDb(): Database.Database {
@@ -270,6 +439,7 @@ export function initDatabase(dbInstance: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       room_no TEXT NOT NULL UNIQUE,
       capacity INTEGER DEFAULT 0,
+      room_type TEXT DEFAULT '',
       remark TEXT DEFAULT '',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME
@@ -282,6 +452,42 @@ export function initDatabase(dbInstance: Database.Database) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(room_id, bed_no),
       FOREIGN KEY (room_id) REFERENCES dormitory_rooms(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS dormitory_room_change_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dormitory_record_id INTEGER NOT NULL,
+      employee_name TEXT NOT NULL,
+      from_room_no TEXT,
+      from_bed_no TEXT,
+      from_room_bed TEXT,
+      to_room_no TEXT NOT NULL,
+      to_bed_no TEXT NOT NULL,
+      to_room_bed TEXT NOT NULL,
+      handler_name TEXT NOT NULL,
+      reason TEXT,
+      changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (dormitory_record_id) REFERENCES dormitory_records(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS dormitory_delete_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dormitory_record_id INTEGER NOT NULL,
+      employee_name TEXT NOT NULL,
+      phone TEXT,
+      department TEXT,
+      position TEXT,
+      room_no TEXT,
+      bed_no TEXT,
+      room_bed TEXT,
+      checked_in_at DATETIME,
+      checked_out_at DATETIME,
+      deleted_by_user_id INTEGER,
+      deleted_by_name TEXT NOT NULL,
+      deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      record_snapshot TEXT,
+      created_at DATETIME DEFAULT (datetime('now', '+8 hours'))
     );
 
     CREATE TABLE IF NOT EXISTS water_meter_records (
@@ -428,6 +634,10 @@ export function initDatabase(dbInstance: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_dormitory_name ON dormitory_records(name);
     CREATE INDEX IF NOT EXISTS idx_dormitory_created_at ON dormitory_records(created_at);
     CREATE INDEX IF NOT EXISTS idx_dormitory_beds_room_id ON dormitory_beds(room_id);
+    CREATE INDEX IF NOT EXISTS idx_dormitory_room_changes_record_id ON dormitory_room_change_records(dormitory_record_id);
+    CREATE INDEX IF NOT EXISTS idx_dormitory_room_changes_changed_at ON dormitory_room_change_records(changed_at);
+    CREATE INDEX IF NOT EXISTS idx_dormitory_delete_records_deleted_at ON dormitory_delete_records(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_dormitory_delete_records_deleted_by ON dormitory_delete_records(deleted_by_user_id);
     CREATE INDEX IF NOT EXISTS idx_water_meter_room_no ON water_meter_records(room_no);
     CREATE INDEX IF NOT EXISTS idx_water_meter_reading_date ON water_meter_records(reading_date);
   `);
@@ -462,6 +672,64 @@ export function initDatabase(dbInstance: Database.Database) {
       CREATE INDEX IF NOT EXISTS idx_dormitory_room_no ON dormitory_records(room_no);
       CREATE INDEX IF NOT EXISTS idx_dormitory_bed_no ON dormitory_records(bed_no);
     `);
+  } catch (e) {
+    // 忽略已有库迁移错误
+  }
+
+  try {
+    const roomColumns = dbInstance.prepare("PRAGMA table_info(dormitory_rooms)").all() as { name: string }[];
+    if (!roomColumns.some(col => col.name === 'room_type')) {
+      dbInstance.exec("ALTER TABLE dormitory_rooms ADD COLUMN room_type TEXT DEFAULT ''");
+    }
+    dbInstance.exec(`
+      CREATE TABLE IF NOT EXISTS dormitory_room_change_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dormitory_record_id INTEGER NOT NULL,
+        employee_name TEXT NOT NULL,
+        from_room_no TEXT,
+        from_bed_no TEXT,
+        from_room_bed TEXT,
+        to_room_no TEXT NOT NULL,
+        to_bed_no TEXT NOT NULL,
+        to_room_bed TEXT NOT NULL,
+        handler_name TEXT NOT NULL,
+        reason TEXT,
+        changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (dormitory_record_id) REFERENCES dormitory_records(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_dormitory_room_changes_record_id ON dormitory_room_change_records(dormitory_record_id);
+      CREATE INDEX IF NOT EXISTS idx_dormitory_room_changes_changed_at ON dormitory_room_change_records(changed_at);
+      CREATE TABLE IF NOT EXISTS dormitory_delete_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dormitory_record_id INTEGER NOT NULL,
+        employee_name TEXT NOT NULL,
+        phone TEXT,
+        department TEXT,
+        position TEXT,
+        room_no TEXT,
+        bed_no TEXT,
+        room_bed TEXT,
+        checked_in_at DATETIME,
+        checked_out_at DATETIME,
+        deleted_by_user_id INTEGER,
+        deleted_by_name TEXT NOT NULL,
+        deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        record_snapshot TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_dormitory_delete_records_deleted_at ON dormitory_delete_records(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_dormitory_delete_records_deleted_by ON dormitory_delete_records(deleted_by_user_id);
+    `);
+  } catch (e) {
+    // 忽略已有库迁移错误
+  }
+
+  try {
+    const deleteRecordColumns = dbInstance.prepare("PRAGMA table_info(dormitory_delete_records)").all() as { name: string }[];
+    if (!deleteRecordColumns.some(col => col.name === 'record_snapshot')) {
+      dbInstance.exec('ALTER TABLE dormitory_delete_records ADD COLUMN record_snapshot TEXT');
+    }
   } catch (e) {
     // 忽略已有库迁移错误
   }
@@ -1478,14 +1746,16 @@ export function initDatabase(dbInstance: Database.Database) {
   
   // 重新启用外键约束
   dbInstance.pragma('foreign_keys = ON');
+  ensureChinaTimeTriggers(dbInstance);
+  ensureOperationLogsChinaTimeMigration(dbInstance);
+  ensureEmployeeSalaryLocationMigration(dbInstance);
+  ensureProductionEmployeesWorkshopMigration(dbInstance);
   
   // 清理35天前的过期日志
   console.log('数据库初始化完成，开始清理过期日志...');
   try {
     // 清理35天前的操作日志
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 35);
-    const cutoffDateStr = cutoffDate.toISOString().slice(0, 19).replace('T', ' ');
+    const cutoffDateStr = formatChinaDateTime(Date.now() - 35 * 24 * 60 * 60 * 1000);
     
     // 检查 operation_logs 表是否存在
     const opTableExists = dbInstance
@@ -1520,9 +1790,7 @@ export function initDatabase(dbInstance: Database.Database) {
 // 清理离职超过一周的员工数据
 function cleanResignedEmployees(dbInstance: Database.Database) {
   try {
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    const cutoffDate = oneWeekAgo.toISOString().split('T')[0];
+    const cutoffDate = formatChinaDateTime(Date.now() - 7 * 24 * 60 * 60 * 1000).slice(0, 10);
 
     // 查找离职超过一周的员工
     const resignedEmployees = dbInstance.prepare(`
@@ -1547,6 +1815,25 @@ function cleanResignedEmployees(dbInstance: Database.Database) {
     console.error('清理离职员工数据失败:', e);
   }
 }
+
+const validMonthlyRecordWhere = 'w.year BETWEEN 2000 AND 2100 AND w.month_num BETWEEN 1 AND 12';
+const monthlyRecordSelect = `
+  SELECT
+    w.*,
+    COALESCE(
+      e.id,
+      (SELECT e2.id FROM employees e2 WHERE e2.name = w.employee_name ORDER BY e2.id DESC LIMIT 1),
+      w.employee_id
+    ) as employee_id,
+    COALESCE(e.name, w.employee_name, '') as employee_name,
+    COALESCE(
+      e.department,
+      (SELECT e2.department FROM employees e2 WHERE e2.name = w.employee_name ORDER BY e2.id DESC LIMIT 1),
+      ''
+    ) as department
+  FROM work_hours_monthly w
+  LEFT JOIN employees e ON w.employee_id = e.id
+`;
 
 // 查询助手
 export const query = {
@@ -1662,13 +1949,13 @@ export const query = {
   
   // 验证码相关
   createVerificationCode: db.prepare('INSERT INTO verification_codes (email, code, type, expires_at) VALUES (?, ?, ?, ?)'),
-  getVerificationCode: db.prepare("SELECT * FROM verification_codes WHERE email = ? AND code = ? AND type = ? AND used = 0 AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1"),
+  getVerificationCode: db.prepare("SELECT * FROM verification_codes WHERE email = ? AND code = ? AND type = ? AND used = 0 AND expires_at > datetime('now', '+8 hours') ORDER BY created_at DESC LIMIT 1"),
   markCodeUsed: db.prepare('UPDATE verification_codes SET used = 1 WHERE id = ?'),
-  cleanupExpiredCodes: db.prepare("DELETE FROM verification_codes WHERE expires_at < datetime('now')"),
+  cleanupExpiredCodes: db.prepare("DELETE FROM verification_codes WHERE expires_at < datetime('now', '+8 hours')"),
   
   // 注册码相关
   createRegistrationCode: db.prepare('INSERT INTO registration_codes (code, created_by, expires_at, permissions, department_id, position_id) VALUES (?, ?, ?, ?, ?, ?)'),
-  getRegistrationCode: db.prepare("SELECT * FROM registration_codes WHERE code = ? AND used = 0 AND (expires_at IS NULL OR expires_at > datetime('now'))"),
+  getRegistrationCode: db.prepare("SELECT * FROM registration_codes WHERE code = ? AND used = 0 AND (expires_at IS NULL OR expires_at > datetime('now', '+8 hours'))"),
   markRegistrationCodeUsed: db.prepare('UPDATE registration_codes SET used = 1, used_by = ?, used_at = CURRENT_TIMESTAMP WHERE id = ?'),
   getAllRegistrationCodes: db.prepare('SELECT r.*, u1.name as creator_name, u2.name as user_name FROM registration_codes r LEFT JOIN users u1 ON r.created_by = u1.id LEFT JOIN users u2 ON r.used_by = u2.id ORDER BY r.created_at DESC'),
   deleteRegistrationCode: db.prepare('DELETE FROM registration_codes WHERE id = ?'),
@@ -1695,10 +1982,10 @@ export const query = {
   updateSalaryRecordSignature: db.prepare('UPDATE employee_salary_records SET signature = ?, signature_time = CURRENT_TIMESTAMP WHERE id = ?'),
   
   // 工时月份汇总
-  getWorkHoursMonthly: db.prepare('SELECT w.*, e.name as employee_name, e.department FROM work_hours_monthly w LEFT JOIN employees e ON w.employee_id = e.id ORDER BY w.year DESC, w.month_num DESC, w.employee_id'),
-  getWorkHoursMonthlyByEmployee: db.prepare('SELECT * FROM work_hours_monthly WHERE employee_id = ? ORDER BY year DESC, month_num DESC'),
-  getWorkHoursMonthlyByMonth: db.prepare('SELECT w.*, e.name as employee_name, e.department FROM work_hours_monthly w LEFT JOIN employees e ON w.employee_id = e.id WHERE w.month = ? ORDER BY w.employee_id'),
-  getWorkHoursMonthlyByYearMonth: db.prepare('SELECT w.*, e.name as employee_name, e.department FROM work_hours_monthly w LEFT JOIN employees e ON w.employee_id = e.id WHERE w.year = ? AND w.month_num = ? ORDER BY w.employee_id'),
+  getWorkHoursMonthly: db.prepare(`${monthlyRecordSelect} WHERE ${validMonthlyRecordWhere} ORDER BY w.year DESC, w.month_num DESC, w.employee_id`),
+  getWorkHoursMonthlyByEmployee: db.prepare('SELECT * FROM work_hours_monthly WHERE employee_id = ? AND year BETWEEN 2000 AND 2100 AND month_num BETWEEN 1 AND 12 ORDER BY year DESC, month_num DESC'),
+  getWorkHoursMonthlyByMonth: db.prepare(`${monthlyRecordSelect} WHERE ${validMonthlyRecordWhere} AND w.month = ? ORDER BY w.employee_id`),
+  getWorkHoursMonthlyByYearMonth: db.prepare(`${monthlyRecordSelect} WHERE ${validMonthlyRecordWhere} AND w.year = ? AND w.month_num = ? ORDER BY w.employee_id`),
   createWorkHoursMonthly: db.prepare('INSERT INTO work_hours_monthly (employee_id, month, total_days, work_hours, overtime_hours, weekend_overtime, details, employee_name, year, month_num, normal_hours, weekday_overtime, base_salary, normal_pay, weekday_overtime_pay, weekend_overtime_pay, total_payable, deduction, actual_amount, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
   createWorkHoursMonthlySimple: db.prepare('INSERT INTO work_hours_monthly (employee_id, month, total_days, work_hours, overtime_hours, weekend_overtime, details) VALUES (?, ?, ?, ?, ?, ?, ?)'),
   updateWorkHoursMonthly: db.prepare('UPDATE work_hours_monthly SET total_days = ?, work_hours = ?, overtime_hours = ?, weekend_overtime = ?, details = ? WHERE id = ?'),
@@ -1823,8 +2110,8 @@ export const query = {
     getAllCount: db.prepare('SELECT COUNT(*) as count FROM operation_logs'),
     getByUserId: db.prepare('SELECT * FROM operation_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'),
     getByModule: db.prepare('SELECT ol.*, u.name as user_name FROM operation_logs ol LEFT JOIN users u ON ol.user_id = u.id WHERE ol.module = ? ORDER BY ol.created_at DESC'),
-    create: db.prepare('INSERT INTO operation_logs (user_id, username, module, action, description, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)'),
-    deleteOld: db.prepare("DELETE FROM operation_logs WHERE created_at < datetime('now', '-90 days')"),
+    create: db.prepare('INSERT INTO operation_logs (user_id, username, module, action, description, ip_address, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
+    deleteOld: db.prepare("DELETE FROM operation_logs WHERE created_at < datetime('now', '+8 hours', '-90 days')"),
   },
   
   // 职位层级相关
@@ -1959,7 +2246,8 @@ export function logOperationServer(params: {
       params.action,
       description,
       params.ipAddress || null,
-      params.userAgent || null
+      params.userAgent || null,
+      chinaNowSql()
     );
     console.log('操作日志记录成功:', params.module, params.action, params.userName);
   } catch (error) {

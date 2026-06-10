@@ -1,6 +1,7 @@
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import * as XLSX from 'xlsx-js-style';
 import type { WaterMeterRecord } from '@/types/water-meter';
+import { chinaToday } from '@/lib/china-time';
 
 const COLUMN_COUNT = 14;
 const MIN_DATA_ROWS = 20;
@@ -44,7 +45,7 @@ function numberText(value: number | null | undefined) {
 }
 
 function exportMonth(records: WaterMeterRecord[], month?: string) {
-  const source = month ? `${month}-01` : records[0]?.readingDate || new Date().toISOString().slice(0, 10);
+  const source = month ? `${month}-01` : records[0]?.readingDate || chinaToday();
   const [year, monthNumber] = source.split('-');
   return `日期：${year || '20  '}年 ${monthNumber || '  '}月`;
 }

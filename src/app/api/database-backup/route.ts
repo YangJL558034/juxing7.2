@@ -5,6 +5,7 @@ import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 import { verifyToken } from '@/lib/auth';
 import { db, getDatabaseFilePath } from '@/lib/database';
+import { chinaNowSql } from '@/lib/china-time';
 
 export const runtime = 'nodejs';
 
@@ -37,8 +38,7 @@ async function requireBackupUser(request: NextRequest) {
 }
 
 function localDateTime() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+  return chinaNowSql();
 }
 
 function fileTimestamp() {
@@ -66,7 +66,7 @@ function ensureSettingsRow() {
       interval_hours INTEGER DEFAULT 24,
       last_backup_at TEXT,
       last_backup_file TEXT,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      updated_at DATETIME DEFAULT (datetime('now', '+8 hours'))
     )
   `);
   db.exec(`
@@ -136,7 +136,7 @@ async function createBackup(type: 'manual' | 'auto' | 'before-restore') {
   if (type === 'auto') {
     db.prepare(`
       UPDATE database_backup_settings
-      SET last_backup_at = ?, last_backup_file = ?, updated_at = CURRENT_TIMESTAMP
+      SET last_backup_at = ?, last_backup_file = ?, updated_at = datetime('now', '+8 hours')
       WHERE id = 1
     `).run(createdAt, fileName);
   }
@@ -365,7 +365,7 @@ export async function POST(request: NextRequest) {
       ensureSettingsRow();
       db.prepare(`
         UPDATE database_backup_settings
-        SET auto_enabled = ?, interval_hours = ?, updated_at = CURRENT_TIMESTAMP
+        SET auto_enabled = ?, interval_hours = ?, updated_at = datetime('now', '+8 hours')
         WHERE id = 1
       `).run(autoEnabled ? 1 : 0, intervalHours);
       const autoBackup = await runDueAutoBackup();

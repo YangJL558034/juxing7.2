@@ -29,6 +29,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { formatChinaDateTime, parseChinaTime } from '@/lib/china-time';
 
 interface ApprovalRecord {
   id: number;
@@ -81,7 +82,7 @@ export default function ApprovalCenter() {
   
   // 格式化年月分组
   const formatYearMonth = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseChinaTime(dateStr) || new Date(dateStr);
     return `${date.getFullYear()}年${date.getMonth() + 1}月`;
   };
   
@@ -182,7 +183,7 @@ export default function ApprovalCenter() {
         status: item.status || '待审批',
         currentApproverId: item.current_approver_id !== null ? Number(item.current_approver_id) : null,
         currentApproverName: item.current_approver_name || '',
-        createTime: item.created_at ? new Date(item.created_at).toLocaleString() : '',
+        createTime: item.created_at ? formatChinaDateTime(item.created_at) : '',
         docNo: item.request_no,
         items: item.items ? JSON.parse(item.items) : undefined,
         approvals: item.approvals || [],
@@ -202,7 +203,7 @@ export default function ApprovalCenter() {
         status: item.status || '待审批',
         currentApproverId: item.current_approver_id !== null ? Number(item.current_approver_id) : null,
         currentApproverName: item.current_approver_name || '',
-        createTime: item.created_at ? new Date(item.created_at).toLocaleString() : '',
+        createTime: item.created_at ? formatChinaDateTime(item.created_at) : '',
         docNo: item.claim_no,
         items: item.items ? JSON.parse(item.items) : undefined,
         approvals: item.approvals || [],
@@ -883,7 +884,7 @@ export default function ApprovalCenter() {
                               </p>
                             )}
                             <p className="text-xs text-slate-400 mt-1">
-                              {record.created_at ? new Date(record.created_at).toLocaleString() : ''}
+                              {record.created_at ? formatChinaDateTime(record.created_at) : ''}
                             </p>
                           </div>
                         </div>

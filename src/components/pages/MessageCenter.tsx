@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bell, Check, Eye, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { formatChinaDateTime } from '@/lib/china-time';
 
 interface Message {
   id: number;
@@ -184,7 +185,7 @@ export default function MessageCenter() {
                         )}
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(msg.created_at).toLocaleString()}
+                        {formatChinaDateTime(msg.created_at)}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground mb-2">{msg.content}</p>

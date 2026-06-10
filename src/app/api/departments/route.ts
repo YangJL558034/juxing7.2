@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, getTokenFromHeader } from '@/lib/auth';
 import { query } from '@/lib/database';
+import { chinaNowSql } from '@/lib/china-time';
 
 // 从请求中获取 token（优先从 Authorization header，其次从 Cookie）
 function getToken(request: NextRequest): string | null {
@@ -69,7 +70,8 @@ export async function POST(request: NextRequest) {
       '创建部门',
       `创建部门：${name}`,
       request.headers.get('x-forwarded-for') || request.headers.get('remote-addr') || null,
-      request.headers.get('user-agent') || null
+      request.headers.get('user-agent') || null,
+      chinaNowSql()
     );
     
     return NextResponse.json({ success: true, id: result.lastInsertRowid });

@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { defaultOnboardingData } from '@/lib/onboarding-records';
+import { chinaToday } from '@/lib/china-time';
 import { cn } from '@/lib/utils';
 import type { OnboardingFormData } from '@/types/onboarding';
 
@@ -31,7 +32,7 @@ const steps = [
   { id: 8, label: '完成' },
 ];
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = chinaToday;
 
 function createInitialData(): OnboardingFormData {
   return {
@@ -40,8 +41,8 @@ function createInitialData(): OnboardingFormData {
     hireDate: today(),
     signatureDate: today(),
     contractTerm: '0',
-    probationMonths: '2',
-    probationSalary: '4500',
+    probationMonths: '0',
+    probationSalary: '2200',
     wageMethod: '底薪和加班费',
   };
 }

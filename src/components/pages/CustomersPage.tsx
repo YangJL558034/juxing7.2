@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/table';
 import { Search, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatChinaDate } from '@/lib/china-time';
 
 interface Customer {
   id: number;
@@ -151,7 +152,7 @@ export function CustomersPage() {
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('zh-CN');
+    return formatChinaDate(dateStr);
   };
 
   const filteredCustomers = customers.filter(customer => 

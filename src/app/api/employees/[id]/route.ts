@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, logOperationServer } from '@/lib/database';
 import { verifyToken } from '@/lib/auth';
+import { chinaToday } from '@/lib/china-time';
+import { resolveEmployeeSalaryLocation } from '@/lib/employee-location';
 
 // 更新员工
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -18,6 +20,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const body = await request.json();
     const { name, phone, department, id_card, location, status, hire_date } = body;
+    const employeeLocation = resolveEmployeeSalaryLocation(department, location);
 
     if (!name || !department) {
       return NextResponse.json({ error: '姓名和部门为必填项' }, { status: 400 });
@@ -30,7 +33,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     let resignDate = null;
     if (status === '离职' && currentEmployee?.status !== '离职') {
       // 状态从在职变为离职，记录当前日期
-      resignDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD 格式
+      resignDate = chinaToday(); // YYYY-MM-DD 格式
     } else if (status !== '离职') {
       // 状态不是离职，清空离职日期
       resignDate = null;
@@ -44,7 +47,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       UPDATE employees 
       SET name = ?, phone = ?, department = ?, id_card = ?, location = ?, status = ?, resign_date = ?, hire_date = ? 
       WHERE id = ?
-    `).run(name, phone || null, department, id_card || null, location || 'workshop', status || '在职', resignDate, hire_date || null, id);
+    `).run(name, phone || null, department, id_card || null, employeeLocation, status || '在职', resignDate, hire_date || null, id);
 
     // 记录操作日志
     logOperationServer({
@@ -52,7 +55,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       userName: decoded.name || decoded.username,
       module: 'employee',
       action: 'update',
-      details: { employeeId: id, name, department, status, location },
+      details: { employeeId: id, name, department, status, location: employeeLocation },
       ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
       userAgent: request.headers.get('user-agent') || null,
     });

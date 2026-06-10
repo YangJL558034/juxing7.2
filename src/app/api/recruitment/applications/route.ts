@@ -125,7 +125,7 @@ async function notifyAdmins({
     }
   }
 
-  db.prepare('UPDATE recruitment_applications SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(applicationId);
+  db.prepare("UPDATE recruitment_applications SET updated_at = datetime('now', '+8 hours') WHERE id = ?").run(applicationId);
 }
 
 export async function GET(request: NextRequest) {

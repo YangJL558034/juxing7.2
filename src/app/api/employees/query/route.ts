@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, db } from '@/lib/database';
 
+interface MonthlyRecordRow {
+  [key: string]: unknown;
+  id: number;
+  employee_id: number;
+  employee_name?: string | null;
+  department?: string | null;
+  details?: string | null;
+  year: number;
+  month_num: number;
+}
+
+interface AttendanceRecord {
+  employee_id: number;
+  employee_name: string;
+  date: string;
+  time: string;
+  year: number;
+  month: number;
+}
+
 // 员工查询（免登录，通过姓名+身份证验证）
 export async function GET(request: NextRequest) {
   try {
@@ -44,15 +64,31 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 获取工时记录（月度汇总）- 作为工资记录返回
-    const monthlyRecords = query.getWorkHoursMonthlyByEmployee.all(employee.id) as any[];
+    // 获取工时记录（月度汇总）- 作为工资记录返回。
+    // 历史导入数据可能保留了旧 employee_id，若旧 ID 已无对应员工，则按姓名回退匹配。
+    const monthlyRecords = db.prepare(`
+      SELECT w.*
+      FROM work_hours_monthly w
+      WHERE w.year BETWEEN 2000 AND 2100
+        AND w.month_num BETWEEN 1 AND 12
+        AND (
+          w.employee_id = ?
+          OR (
+            w.employee_name = ?
+            AND NOT EXISTS (
+              SELECT 1 FROM employees linked_employee WHERE linked_employee.id = w.employee_id
+            )
+          )
+        )
+      ORDER BY w.year DESC, w.month_num DESC, w.id DESC
+    `).all(employee.id, employee.name) as MonthlyRecordRow[];
     
     // 从 work_hours_monthly.details 解析打卡记录
-    let attendanceRecords: any[] = [];
+    const attendanceRecords: AttendanceRecord[] = [];
     for (const record of monthlyRecords) {
       if (record.details) {
         try {
-          const details = JSON.parse(record.details);
+          const details = JSON.parse(record.details) as Record<string, unknown>;
           const year = record.year;
           const month = record.month_num;
           
@@ -70,7 +106,7 @@ export async function GET(request: NextRequest) {
               });
             }
           }
-        } catch (e) {
+        } catch {
           // 解析失败，跳过
         }
       }
@@ -83,7 +119,7 @@ export async function GET(request: NextRequest) {
     });
 
     // 用员工表的部门信息覆盖工资记录的部门信息（工资表部门可能为空）
-    const salaryRecordsWithDept = (monthlyRecords || []).map((record: any) => ({
+    const salaryRecordsWithDept = monthlyRecords.map((record) => ({
       ...record,
       department: employee.department || record.department || ''
     }));

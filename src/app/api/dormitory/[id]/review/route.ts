@@ -78,8 +78,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           bed_no = ?,
           room_bed = ?,
           key_issued = ?,
-          reviewed_at = CURRENT_TIMESTAMP,
-          updated_at = CURRENT_TIMESTAMP
+          reviewed_at = datetime('now', '+8 hours'),
+          updated_at = datetime('now', '+8 hours')
       WHERE id = ?
     `).run(reviewerName, reviewOpinion, roomNo, bedNo, roomBed, keyIssued, id);
 

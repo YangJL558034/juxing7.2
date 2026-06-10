@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, logOperationServer } from '@/lib/database';
 import { getCurrentUser } from '@/lib/auth';
+import { chinaNowSql } from '@/lib/china-time';
 
 // 资产报废
 export async function POST(
@@ -34,14 +35,7 @@ export async function POST(
     }
 
     // 更新资产状态为报废，记录报废时间和确认人
-    const scrapTime = new Date().toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
+    const scrapTime = chinaNowSql();
 
     db.prepare(`
       UPDATE assets 

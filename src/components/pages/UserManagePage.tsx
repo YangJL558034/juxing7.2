@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { formatChinaDateTime } from '@/lib/china-time';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -632,7 +633,7 @@ export default function UserManagePage() {
                     <TableCell>{userPosition?.name || '-'}</TableCell>
                     <TableCell>{userManager?.name || '-'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{user.email || '-'}</TableCell>
-                    <TableCell>{new Date(user.created_at).toLocaleString()}</TableCell>
+                    <TableCell>{formatChinaDateTime(user.created_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button
@@ -1170,9 +1171,9 @@ export default function UserManagePage() {
                           <Badge variant="default">未使用</Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm">{new Date(code.created_at).toLocaleString()}</TableCell>
+                      <TableCell className="text-sm">{formatChinaDateTime(code.created_at)}</TableCell>
                       <TableCell className="text-sm">
-                        {code.expires_at ? new Date(code.expires_at).toLocaleString() : '永久'}
+                        {code.expires_at ? formatChinaDateTime(code.expires_at) : '永久'}
                       </TableCell>
                       <TableCell>{code.user_name || '-'}</TableCell>
                     </TableRow>
@@ -1307,7 +1308,7 @@ export default function UserManagePage() {
                       </TableCell>
                       <TableCell>{record.receiver_name}</TableCell>
                       <TableCell>
-                        {new Date(record.created_at).toLocaleString('zh-CN')}
+                        {formatChinaDateTime(record.created_at)}
                       </TableCell>
                       <TableCell>
                         {record.is_read ? (
@@ -1315,7 +1316,7 @@ export default function UserManagePage() {
                             <Check className="h-4 w-4" /> 已读
                             {record.read_at && (
                               <span className="text-xs text-muted-foreground">
-                                ({new Date(record.read_at).toLocaleString('zh-CN')})
+                                ({formatChinaDateTime(record.read_at)})
                               </span>
                             )}
                           </span>

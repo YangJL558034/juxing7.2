@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
+import { formatChinaDate } from '@/lib/china-time';
 
 interface Department {
   id: number;
@@ -280,7 +281,7 @@ export function DepartmentsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {dept.created_at ? new Date(dept.created_at).toLocaleDateString() : '-'}
+                      {dept.created_at ? formatChinaDate(dept.created_at) : '-'}
                     </TableCell>
                   </TableRow>
                 );

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, logOperationServer } from '@/lib/database';
 import { verifyToken } from '@/lib/auth';
+import { cleanupExpiredDormitoryDeleteRecords, ensureDormitoryDeleteRecordsTable } from '@/lib/dormitory-delete-records';
 import { normalizeDormitoryData, parseDormitoryRow, type DormitoryDbRow } from '@/lib/dormitory-records';
 
 async function requireUser(request: NextRequest) {
@@ -60,7 +61,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           expected_check_in_date = ?,
           reason = ?,
           data_json = ?,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = datetime('now', '+8 hours')
       WHERE id = ?
     `).run(
       data.name,
@@ -106,7 +107,54 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     const record = parseDormitoryRow(row);
-    db.prepare('DELETE FROM dormitory_records WHERE id = ?').run(id);
+    if (record.status !== '已退宿') {
+      return NextResponse.json({ success: false, error: '只有已退宿记录可以删除' }, { status: 400 });
+    }
+
+    ensureDormitoryDeleteRecordsTable();
+    cleanupExpiredDormitoryDeleteRecords();
+
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare(`
+        INSERT INTO dormitory_delete_records (
+          dormitory_record_id,
+          employee_name,
+          phone,
+          department,
+          position,
+          room_no,
+          bed_no,
+          room_bed,
+          checked_in_at,
+          checked_out_at,
+          deleted_by_user_id,
+          deleted_by_name,
+          record_snapshot
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        record.name,
+        record.phone,
+        record.department,
+        record.position,
+        record.roomNo,
+        record.bedNo,
+        record.roomBed,
+        record.checkedInAt,
+        record.checkedOutAt,
+        user.id,
+        user.name || user.username,
+        JSON.stringify(row),
+      );
+      db.prepare('DELETE FROM dormitory_room_change_records WHERE dormitory_record_id = ?').run(id);
+      db.prepare('DELETE FROM dormitory_records WHERE id = ?').run(id);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
 
     logOperationServer({
       userId: user.id,

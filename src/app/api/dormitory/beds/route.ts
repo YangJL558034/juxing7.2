@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN dormitory_records dr
         ON dr.room_no = r.room_no
        AND dr.bed_no = b.bed_no
-       AND dr.status = '已入住'
+       AND dr.status IN ('已审核', '已入住')
       ${where}
       ORDER BY r.room_no ASC, b.bed_no ASC
     `).all(...params) as Array<Parameters<typeof mapBed>[0]>;

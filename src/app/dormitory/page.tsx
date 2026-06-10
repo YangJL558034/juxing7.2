@@ -16,11 +16,12 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { chinaToday } from '@/lib/china-time';
 import { defaultDormitoryData } from '@/lib/dormitory-records';
 import { cn } from '@/lib/utils';
 import type { DormitoryApplicationData } from '@/types/dormitory';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = chinaToday;
 
 function createInitialData(): DormitoryApplicationData {
   return {

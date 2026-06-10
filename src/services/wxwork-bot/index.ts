@@ -19,10 +19,11 @@ import WebSocket from 'ws';
 import https from 'https';
 import http from 'http';
 import { wxWorkBotConfig, apiConfig, logConfig, wsConfig } from './config.js';
+import { formatChinaDateTime } from '@/lib/china-time';
 
 // 日志工具
 function log(level: string, message: string, ...args: any[]) {
-  const timestamp = new Date().toISOString();
+  const timestamp = formatChinaDateTime(new Date());
   const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
   
   if (logConfig.console) {

@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { formatChinaDate } from '@/lib/china-time';
 
 const todoCategories = [
   '今日需联系线索',
@@ -115,7 +116,7 @@ export function TodoPage() {
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('zh-CN');
+    return formatChinaDate(dateStr);
   };
 
   return (

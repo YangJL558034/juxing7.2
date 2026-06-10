@@ -46,6 +46,7 @@ export interface DormitoryRoom {
   id: number;
   roomNo: string;
   capacity: number;
+  roomType: string | null;
   remark: string | null;
   bedCount: number;
   occupiedCount: number;
@@ -75,4 +76,39 @@ export interface DormitoryRoomResident {
   keyIssued: string | null;
   handlerName: string | null;
   checkedInAt: string | null;
+}
+
+export interface DormitoryRoomChangeRecord {
+  id: number;
+  dormitoryRecordId: number;
+  employeeName: string;
+  fromRoomNo: string | null;
+  fromBedNo: string | null;
+  fromRoomBed: string | null;
+  toRoomNo: string;
+  toBedNo: string;
+  toRoomBed: string;
+  handlerName: string;
+  reason: string | null;
+  changedAt: string;
+  createdAt: string;
+}
+
+export interface DormitoryDeleteRecord {
+  id: number;
+  dormitoryRecordId: number;
+  employeeName: string;
+  phone: string | null;
+  department: string | null;
+  position: string | null;
+  roomNo: string | null;
+  bedNo: string | null;
+  roomBed: string | null;
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  deletedByUserId: number | null;
+  deletedByName: string;
+  deletedAt: string;
+  expiresAt: string;
+  createdAt: string;
 }

@@ -36,6 +36,7 @@ import {
   UploadCloud,
   HardDrive,
 } from 'lucide-react';
+import { formatChinaDateTime } from '@/lib/china-time';
 
 interface EmailConfig {
   host: string;
@@ -319,7 +320,7 @@ export function SettingsPage() {
 
   const formatBackupTime = (value?: string | null) => {
     if (!value) return '-';
-    return new Date(value).toLocaleString('zh-CN');
+    return formatChinaDateTime(value);
   };
 
   const handleDownloadDatabaseBackup = () => {

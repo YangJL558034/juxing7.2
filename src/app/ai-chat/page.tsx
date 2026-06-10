@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Send, Bot, User, Loader2, Trash2, Copy, Check } from 'lucide-react';
+import { formatChinaTime } from '@/lib/china-time';
 
 interface Message {
   id: string;
@@ -242,7 +243,7 @@ export default function AIChatPage({ user }: AIChatPageProps) {
 
   // 格式化时间
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    return formatChinaTime(date);
   };
 
   return (

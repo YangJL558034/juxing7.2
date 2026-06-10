@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, query } from '@/lib/database';
 
+interface MonthlyRecordRow {
+  [key: string]: unknown;
+  id: number;
+  employee_id: number;
+}
+
+interface EmployeeIdLookup {
+  id: number;
+}
+
+interface WorkHoursImportItem {
+  employeeId?: number;
+  employeeName?: string;
+  totalDays?: number;
+  workHours?: number;
+  overtimeHours?: number;
+  weekendOvertime?: number;
+  details?: unknown;
+}
+
 // 获取工时月份汇总
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +31,28 @@ export async function GET(request: NextRequest) {
     
     let records;
     if (employeeId) {
-      records = query.getWorkHoursMonthlyByEmployee.all(employeeId);
+      const parsedEmployeeId = parseInt(employeeId, 10);
+      const employee = db.prepare('SELECT name FROM employees WHERE id = ?').get(parsedEmployeeId) as { name: string } | undefined;
+      if (employee?.name) {
+        records = db.prepare(`
+          SELECT w.*, ? as employee_id, COALESCE(NULLIF(w.employee_name, ''), ?) as employee_name
+          FROM work_hours_monthly w
+          WHERE w.year BETWEEN 2000 AND 2100
+            AND w.month_num BETWEEN 1 AND 12
+            AND (
+              w.employee_id = ?
+              OR (
+                w.employee_name = ?
+                AND NOT EXISTS (
+                  SELECT 1 FROM employees linked_employee WHERE linked_employee.id = w.employee_id
+                )
+              )
+            )
+          ORDER BY w.year DESC, w.month_num DESC, w.id DESC
+        `).all(parsedEmployeeId, employee.name, parsedEmployeeId, employee.name);
+      } else {
+        records = query.getWorkHoursMonthlyByEmployee.all(parsedEmployeeId);
+      }
     } else if (year && month) {
       records = query.getWorkHoursMonthlyByYearMonth.all(parseInt(year), parseInt(month));
     } else if (month) {
@@ -52,10 +93,23 @@ export async function POST(request: NextRequest) {
         actual_amount,
         location
       } = body;
+
+      const yearNumber = Number(year);
+      const monthNumber = Number(month);
+      if (
+        !Number.isInteger(yearNumber) ||
+        !Number.isInteger(monthNumber) ||
+        yearNumber < 2000 ||
+        yearNumber > 2100 ||
+        monthNumber < 1 ||
+        monthNumber > 12
+      ) {
+        return NextResponse.json({ error: '年份或月份不合法' }, { status: 400 });
+      }
       
       // 检查是否已存在该记录
-      const existing = query.getWorkHoursMonthlyByYearMonth.all(year, month) as any[];
-      const existingRecord = existing.find((r: any) => r.employee_id === employee_id);
+      const existing = query.getWorkHoursMonthlyByYearMonth.all(yearNumber, monthNumber) as MonthlyRecordRow[];
+      const existingRecord = existing.find((r) => r.employee_id === employee_id);
       
       if (existingRecord) {
         // 更新现有记录
@@ -76,7 +130,7 @@ export async function POST(request: NextRequest) {
         );
       } else {
         // 创建新记录
-        const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+        const monthStr = `${yearNumber}-${String(monthNumber).padStart(2, '0')}`;
         query.createWorkHoursMonthly.run(
           employee_id,
           monthStr,
@@ -86,8 +140,8 @@ export async function POST(request: NextRequest) {
           weekend_overtime || 0,
           '{}', // details
           employee_name,
-          year,
-          month,
+          yearNumber,
+          monthNumber,
           normal_hours || 0,
           weekday_overtime || 0,
           base_salary || 0,
@@ -105,7 +159,7 @@ export async function POST(request: NextRequest) {
     }
     
     // 旧格式：工时数据导入
-    const { month, data } = body;
+    const { month, data } = body as { month?: string; data?: WorkHoursImportItem[] };
     
     if (!month || !data || !Array.isArray(data)) {
       return NextResponse.json({ error: '参数错误' }, { status: 400 });
@@ -121,9 +175,9 @@ export async function POST(request: NextRequest) {
       // 如果没有 employeeId，尝试通过姓名查找
       let empId = employeeId;
       if (!empId && employeeName) {
-        const employee = query.getEmployeeByNameAndPhone.get(employeeName, '');
+        const employee = query.getEmployeeByNameAndPhone.get(employeeName, '') as EmployeeIdLookup | undefined;
         if (employee) {
-          empId = (employee as any).id;
+          empId = employee.id;
         }
       }
       

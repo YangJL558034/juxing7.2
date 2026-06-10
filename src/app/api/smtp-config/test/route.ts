@@ -11,21 +11,45 @@ interface SmtpConfig {
   from_email: string;
 }
 
+interface SmtpTestPayload {
+  to?: string;
+  host?: string;
+  port?: number | string;
+  secure?: boolean;
+  user?: string;
+  pass?: string;
+  from?: string;
+}
+
 // 测试发送邮件
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json() as SmtpTestPayload;
     const { to } = body;
     
     if (!to) {
       return NextResponse.json({ success: false, error: '请输入收件人邮箱' }, { status: 400 });
     }
     
-    // 获取数据库中的SMTP配置
-    const config = db.prepare('SELECT * FROM smtp_config ORDER BY id DESC LIMIT 1').get() as SmtpConfig | undefined;
+    const savedConfig = db.prepare('SELECT * FROM smtp_config ORDER BY id DESC LIMIT 1').get() as SmtpConfig | undefined;
+    const hasInlineConfig = Boolean(body.host || body.port || body.user || body.pass || body.from);
+    const config: SmtpConfig | undefined = hasInlineConfig
+      ? {
+          host: body.host || savedConfig?.host || '',
+          port: Number(body.port || savedConfig?.port || 587),
+          secure: body.secure ? 1 : 0,
+          user: body.user || savedConfig?.user || '',
+          pass: body.pass || savedConfig?.pass || '',
+          from_email: body.from || savedConfig?.from_email || '',
+        }
+      : savedConfig;
     
     if (!config) {
       return NextResponse.json({ success: false, error: '请先保存SMTP配置' }, { status: 400 });
+    }
+
+    if (!config.host || !config.user || !config.pass || !config.from_email) {
+      return NextResponse.json({ success: false, error: 'SMTP配置不完整' }, { status: 400 });
     }
     
     const transporter = nodemailer.createTransport({
@@ -54,8 +78,11 @@ export async function POST(request: NextRequest) {
     });
     
     return NextResponse.json({ success: true, message: '测试邮件已发送' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('发送测试邮件失败:', error);
-    return NextResponse.json({ success: false, error: error.message || '发送失败' }, { status: 500 });
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : '发送失败'
+    }, { status: 500 });
   }
 }
