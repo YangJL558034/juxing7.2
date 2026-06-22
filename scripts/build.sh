@@ -22,7 +22,11 @@ echo "Building the Next.js project..."
 # 设置构建环境变量，避免数据库初始化
 export NEXT_PHASE=phase-production-build
 export NODE_ENV=production
-pnpm next build
+# 限制并行度，避免CPU占满
+export NODE_OPTIONS="--max-old-space-size=2048"
+export TURBOPACK_PROFILE=0
+# 使用传统 webpack 构建（更稳定，适合资源有限的服务器）
+pnpm next build --experimental-webpack
 
 echo "Bundling server with tsup..."
 pnpm tsup src/server.ts --format cjs --platform node --target node20 --outDir dist --no-splitting --no-minify

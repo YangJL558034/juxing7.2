@@ -98,13 +98,36 @@ interface MonthlyRecord {
   actual_amount: number;
   signature?: string;
   // 完整工资条字段
+  is_full_attendance?: string;
+  id_card?: string;
+  bank_name?: string;
+  performance_allowance?: number;
+  other_subsidy_base?: number;
+  required_hours?: number;
   full_attendance_hours?: number;
+  holiday_overtime_hours?: number;
+  night_shift_days?: number;
+  absent_days?: number;
+  personal_leave_hours?: number;
+  sick_leave_hours?: number;
+  late_early_minutes?: number;
+  late_early_count?: number;
+  sign_card_count?: number;
+  evaluation_coefficient?: number;
+  performance_pay?: number;
+  sick_pay?: number;
   living_subsidy?: number;
+  other_pay?: number;
   seniority_award?: number;
   full_attendance_award?: number;
   position_subsidy?: number;
+  work_reward?: number;
+  spring_festival_subsidy?: number;
   social_security_subsidy?: number;
   deduct_social_security?: number;
+  deduct_loan?: number;
+  deduct_urgent?: number;
+  deduct_other?: number;
   deduct_utilities?: number;
   total_deduction?: number;
   sign_time?: string;
@@ -144,6 +167,21 @@ function normalizeLocation(value?: string | null): 'office' | 'workshop' {
 
 function matchesRecordLocation(record: MonthlyRecord, location: 'office' | 'workshop') {
   return normalizeLocation(record.location) === location;
+}
+
+function formatSalaryValue(value?: number | string | null) {
+  const numericValue = Number(value ?? 0);
+  if (!Number.isFinite(numericValue)) {
+    return String(value ?? '');
+  }
+
+  return Number.isInteger(numericValue)
+    ? String(numericValue)
+    : String(Number(numericValue.toFixed(2)));
+}
+
+function formatSalaryMoney(value?: number | string | null) {
+  return `¥${formatSalaryValue(value)}`;
 }
 
 export default function SalaryPage() {
@@ -673,28 +711,84 @@ export default function SalaryPage() {
         return recordLocation === salaryLocation;
       });
     
-    const headers = ['月份', '姓名', '底薪', '正班小时', '平时加班', '周末加班', '实际正班工资', '平时加班工资', '周末加班工资', '生活补贴', '工龄奖', '全勤奖', '岗位补贴', '社保补贴', '应付合计', '扣社保', '水电费', '应扣合计', '实发金额'];
-    const rows = filteredRecords.map(r => [
-      `${r.year}年${r.month_num}月`,
-      r.employee_name,
-      r.base_salary || 0,
-      r.normal_hours || 0,
-      r.weekday_overtime || 0,
-      r.weekend_overtime || 0,
-      r.normal_pay || 0,
-      r.weekday_overtime_pay || 0,
-      r.weekend_overtime_pay || 0,
-      r.living_subsidy || 0,
-      r.seniority_award || 0,
-      r.full_attendance_award || 0,
-      r.position_subsidy || 0,
-      r.social_security_subsidy || 0,
-      r.total_payable || 0,
-      r.deduct_social_security || 0,
-      r.deduct_utilities || 0,
-      r.total_deduction || 0,
-      r.actual_amount || 0
-    ]);
+    const headers = salaryLocation === 'workshop'
+      ? [
+          '月份', '姓名', '是否全勤', '底薪', '绩效津贴', '其他补贴', '应出勤小时', '正班满勤小时',
+          '正班小时', '平时加班小时', '周末加班小时', '法定节假加班小时', '夜班（天）', '旷工', '事假（H）', '病假（H）',
+          '迟到早退(分)', '迟到早退(次)', '签卡次数', '考核评价系数',
+          '实际正班出勤工资', '绩效津贴工资', '平时加班工资', '周末加班工资', '法定节假加班工资', '病假工资',
+          '生活补贴', '应付其他补贴', '工龄奖', '全勤奖', '岗位补贴', '工作奖励', '春节按时返岗补贴', '社保补贴',
+          '应付工资合计', '扣社保', '借款', '急辞扣款', '其他扣款', '本月水电费', '应扣款合计', '实发金额',
+        ]
+      : ['月份', '姓名', '底薪', '正班小时', '平时加班', '周末加班', '实际正班工资', '平时加班工资', '周末加班工资', '生活补贴', '工龄奖', '全勤奖', '岗位补贴', '社保补贴', '应付合计', '扣社保', '水电费', '应扣合计', '实发金额'];
+    const rows = filteredRecords.map(r => (
+      salaryLocation === 'workshop'
+        ? [
+            `${r.year}年${r.month_num}月`,
+            r.employee_name,
+            r.is_full_attendance || '',
+            r.base_salary || 0,
+            r.performance_allowance || 0,
+            r.other_subsidy_base || 0,
+            r.required_hours || 0,
+            r.full_attendance_hours || 0,
+            r.normal_hours || 0,
+            r.weekday_overtime || 0,
+            r.weekend_overtime || 0,
+            r.holiday_overtime_hours || 0,
+            r.night_shift_days || 0,
+            r.absent_days || 0,
+            r.personal_leave_hours || 0,
+            r.sick_leave_hours || 0,
+            r.late_early_minutes || 0,
+            r.late_early_count || 0,
+            r.sign_card_count || 0,
+            r.evaluation_coefficient || 0,
+            r.normal_pay || 0,
+            r.performance_pay || 0,
+            r.weekday_overtime_pay || 0,
+            r.weekend_overtime_pay || 0,
+            r.holiday_overtime_pay || 0,
+            r.sick_pay || 0,
+            r.living_subsidy || 0,
+            r.other_pay || 0,
+            r.seniority_award || 0,
+            r.full_attendance_award || 0,
+            r.position_subsidy || 0,
+            r.work_reward || 0,
+            r.spring_festival_subsidy || 0,
+            r.social_security_subsidy || 0,
+            r.total_payable || 0,
+            r.deduct_social_security || 0,
+            r.deduct_loan || 0,
+            r.deduct_urgent || 0,
+            r.deduct_other || 0,
+            r.deduct_utilities || 0,
+            r.total_deduction || 0,
+            r.actual_amount || 0,
+          ]
+        : [
+            `${r.year}年${r.month_num}月`,
+            r.employee_name,
+            r.base_salary || 0,
+            r.normal_hours || 0,
+            r.weekday_overtime || 0,
+            r.weekend_overtime || 0,
+            r.normal_pay || 0,
+            r.weekday_overtime_pay || 0,
+            r.weekend_overtime_pay || 0,
+            r.living_subsidy || 0,
+            r.seniority_award || 0,
+            r.full_attendance_award || 0,
+            r.position_subsidy || 0,
+            r.social_security_subsidy || 0,
+            r.total_payable || 0,
+            r.deduct_social_security || 0,
+            r.deduct_utilities || 0,
+            r.total_deduction || 0,
+            r.actual_amount || 0,
+          ]
+    ));
     
     const csvContent = '\uFEFF' + [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1524,38 +1618,60 @@ export default function SalaryPage() {
                     </TableBody>
                   </Table>
                 ) : (
-                  // 车间工资条模板（保持原样）
-                  <Table className="min-w-[2000px]">
+                  // 车间工资条模板
+                  <Table className="min-w-[4200px]">
                     <TableHeader>
                       <TableRow className="bg-muted/50">
                         <TableHead rowSpan={2} className="align-middle">序号</TableHead>
                         <TableHead rowSpan={2} className="align-middle">姓名</TableHead>
-                        <TableHead rowSpan={2} className="align-middle text-right">底薪</TableHead>
-                        <TableHead rowSpan={2} className="align-middle text-right">正班满勤</TableHead>
-                        <TableHead colSpan={3} className="text-center border-x">月度出勤记录</TableHead>
-                        <TableHead colSpan={3} className="text-center border-x">出勤工资</TableHead>
-                        <TableHead colSpan={5} className="text-center border-x">应付工资</TableHead>
-                        <TableHead rowSpan={2} className="align-middle text-right">应付合计</TableHead>
-                        <TableHead colSpan={2} className="text-center border-x">应扣款项</TableHead>
-                        <TableHead rowSpan={2} className="align-middle text-right">应扣合计</TableHead>
+                        <TableHead rowSpan={2} className="align-middle">是否全勤</TableHead>
+                        <TableHead colSpan={3} className="text-center border-x">基础数据</TableHead>
+                        <TableHead rowSpan={2} className="align-middle text-right">应出勤小时</TableHead>
+                        <TableHead rowSpan={2} className="align-middle text-right">正班满勤小时</TableHead>
+                        <TableHead colSpan={12} className="text-center border-x">月度出勤记录</TableHead>
+                        <TableHead colSpan={14} className="text-center border-x">应付工资</TableHead>
+                        <TableHead rowSpan={2} className="align-middle text-right">应付工资合计</TableHead>
+                        <TableHead colSpan={5} className="text-center border-x">应扣款项</TableHead>
+                        <TableHead rowSpan={2} className="align-middle text-right">应扣款合计</TableHead>
                         <TableHead rowSpan={2} className="align-middle text-right">实发金额</TableHead>
-                        <TableHead rowSpan={2} className="align-middle">签字</TableHead>
+                        <TableHead rowSpan={2} className="align-middle">签名确认</TableHead>
                         <TableHead rowSpan={2} className="align-middle">操作</TableHead>
                       </TableRow>
                       <TableRow className="bg-muted/30">
-                        <TableHead className="text-right border-l">正班</TableHead>
-                        <TableHead className="text-right">平时加班</TableHead>
-                        <TableHead className="text-right border-r">周末</TableHead>
-                        <TableHead className="text-right border-l">实际正班</TableHead>
-                        <TableHead className="text-right">平时加班</TableHead>
-                        <TableHead className="text-right border-r">周末加班</TableHead>
-                        <TableHead className="text-right border-l">生活补贴</TableHead>
+                        <TableHead className="text-right border-l">底薪</TableHead>
+                        <TableHead className="text-right">绩效津贴</TableHead>
+                        <TableHead className="text-right border-r">其他补贴</TableHead>
+                        <TableHead className="text-right border-l">正班小时</TableHead>
+                        <TableHead className="text-right">平时加班小时</TableHead>
+                        <TableHead className="text-right">周末加班小时</TableHead>
+                        <TableHead className="text-right">法定节假加班小时</TableHead>
+                        <TableHead className="text-right">夜班（天）</TableHead>
+                        <TableHead className="text-right">旷工</TableHead>
+                        <TableHead className="text-right">事假（H）</TableHead>
+                        <TableHead className="text-right">病假（H）</TableHead>
+                        <TableHead className="text-right">迟到早退(分)</TableHead>
+                        <TableHead className="text-right">迟到早退(次)</TableHead>
+                        <TableHead className="text-right">签卡次数</TableHead>
+                        <TableHead className="text-right border-r">考核评价系数</TableHead>
+                        <TableHead className="text-right border-l">实际正班出勤工资</TableHead>
+                        <TableHead className="text-right">绩效津贴工资</TableHead>
+                        <TableHead className="text-right">平时加班工资</TableHead>
+                        <TableHead className="text-right">周末加班工资</TableHead>
+                        <TableHead className="text-right">法定节假加班工资</TableHead>
+                        <TableHead className="text-right">病假工资</TableHead>
+                        <TableHead className="text-right">生活补贴</TableHead>
+                        <TableHead className="text-right">其他补贴</TableHead>
                         <TableHead className="text-right">工龄奖</TableHead>
                         <TableHead className="text-right">全勤奖</TableHead>
                         <TableHead className="text-right">岗位补贴</TableHead>
+                        <TableHead className="text-right">工作奖励</TableHead>
+                        <TableHead className="text-right">春节按时返岗补贴</TableHead>
                         <TableHead className="text-right border-r">社保补贴</TableHead>
                         <TableHead className="text-right border-l">扣社保</TableHead>
-                        <TableHead className="text-right border-r">水电费</TableHead>
+                        <TableHead className="text-right">借款</TableHead>
+                        <TableHead className="text-right">急辞扣款</TableHead>
+                        <TableHead className="text-right">其他</TableHead>
+                        <TableHead className="text-right border-r">本月水电费</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1570,28 +1686,49 @@ export default function SalaryPage() {
                         <TableRow key={record.id}>
                           <TableCell>{idx + 1}</TableCell>
                           <TableCell className="font-medium">{record.employee_name}</TableCell>
-                          <TableCell className="text-right">¥{record.base_salary}</TableCell>
-                          <TableCell className="text-right">{record.full_attendance_hours || 176}</TableCell>
+                          <TableCell>{record.is_full_attendance || '-'}</TableCell>
+                          <TableCell className="text-right">{formatSalaryMoney(record.base_salary)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.performance_allowance)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.other_subsidy_base)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.required_hours || 176)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.full_attendance_hours || 176)}</TableCell>
                           {/* 月度出勤记录 */}
-                          <TableCell className="text-right">{record.normal_hours?.toFixed(0) || 0}</TableCell>
-                          <TableCell className="text-right">{record.weekday_overtime?.toFixed(0) || 0}</TableCell>
-                          <TableCell className="text-right">{record.weekend_overtime?.toFixed(0) || 0}</TableCell>
-                          {/* 出勤工资 */}
-                          <TableCell className="text-right">¥{record.normal_pay || 0}</TableCell>
-                          <TableCell className="text-right">¥{record.weekday_overtime_pay || 0}</TableCell>
-                          <TableCell className="text-right">¥{record.weekend_overtime_pay || 0}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.normal_hours)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.weekday_overtime)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.weekend_overtime)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.holiday_overtime_hours)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.night_shift_days)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.absent_days)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.personal_leave_hours)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.sick_leave_hours)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.late_early_minutes)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.late_early_count)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.sign_card_count)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.evaluation_coefficient || 1)}</TableCell>
                           {/* 应付工资 */}
-                          <TableCell className="text-right">{record.living_subsidy || 0}</TableCell>
-                          <TableCell className="text-right">{record.seniority_award || 0}</TableCell>
-                          <TableCell className="text-right">{record.full_attendance_award || 0}</TableCell>
-                          <TableCell className="text-right">{record.position_subsidy || 0}</TableCell>
-                          <TableCell className="text-right">{record.social_security_subsidy || 0}</TableCell>
-                          <TableCell className="text-right font-medium">¥{record.total_payable}</TableCell>
+                          <TableCell className="text-right">{formatSalaryMoney(record.normal_pay)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryMoney(record.performance_pay)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryMoney(record.weekday_overtime_pay)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryMoney(record.weekend_overtime_pay)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryMoney(record.holiday_overtime_pay)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryMoney(record.sick_pay)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.living_subsidy)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.other_pay)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.seniority_award)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.full_attendance_award)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.position_subsidy)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.work_reward)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.spring_festival_subsidy)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.social_security_subsidy)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatSalaryMoney(record.total_payable)}</TableCell>
                           {/* 应扣款项 */}
-                          <TableCell className="text-right">{record.deduct_social_security || '-'}</TableCell>
-                          <TableCell className="text-right">{record.deduct_utilities || '-'}</TableCell>
-                          <TableCell className="text-right text-red-600">¥{record.total_deduction || 0}</TableCell>
-                          <TableCell className="text-right font-bold text-green-600">¥{record.actual_amount}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.deduct_social_security)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.deduct_loan)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.deduct_urgent)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.deduct_other)}</TableCell>
+                          <TableCell className="text-right">{formatSalaryValue(record.deduct_utilities)}</TableCell>
+                          <TableCell className="text-right text-red-600">{formatSalaryMoney(record.total_deduction)}</TableCell>
+                          <TableCell className="text-right font-bold text-green-600">{formatSalaryMoney(record.actual_amount)}</TableCell>
                           <TableCell>
                             {record.signature ? (
                               <Button 

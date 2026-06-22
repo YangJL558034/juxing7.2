@@ -611,7 +611,7 @@ export default function OnboardingPage() {
             <div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-[430px] border-t border-slate-100 bg-white px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
               {step === 7 ? (
                 <div className="space-y-3">
-                  <Button onClick={handleSubmit} disabled={submitting} className="h-12 w-full bg-blue-600 hover:bg-blue-700">
+                  <Button onClick={handleSubmit} disabled={submitting} className="mobile-submit-button h-12 w-full bg-blue-600 hover:bg-blue-700">
                     {submitting ? '提交中...' : '提交'}
                   </Button>
                   <Button onClick={goPrev} variant="outline" className="h-12 w-full border-blue-200 text-blue-600">

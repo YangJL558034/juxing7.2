@@ -215,7 +215,7 @@ export default function DormitoryApplicationPage() {
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-100 bg-white/95 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
         <div className="mx-auto w-full max-w-[430px]">
-          <Button className="h-12 w-full bg-blue-600 text-base hover:bg-blue-700" onClick={submit} disabled={submitting}>
+          <Button className="mobile-submit-button h-12 w-full bg-blue-600 text-base hover:bg-blue-700" onClick={submit} disabled={submitting}>
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
             提交申请
           </Button>

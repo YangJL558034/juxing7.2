@@ -92,7 +92,7 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ user }: MainLayoutProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [activePage, setActivePage] = useState<PageKey>('dashboard');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -265,7 +265,7 @@ export function MainLayout({ user }: MainLayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="app-root min-h-screen bg-slate-50">
       {/* 登录时的未读消息弹窗 */}
       {showLoginNotification && loginUnreadCount > 0 && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-top-5 fade-in duration-300">
@@ -335,7 +335,7 @@ export function MainLayout({ user }: MainLayoutProps) {
       />
       
       <main
-        className={`pt-14 transition-all duration-300 ${
+        className={`app-shell-main app-animated-surface pt-14 transition-all duration-300 ${
           isMobile 
             ? 'pl-0' 
             : sidebarCollapsed 

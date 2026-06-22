@@ -177,6 +177,19 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    const templateValidation = validateSalaryTemplate(data, salaryFormat);
+    if (templateValidation.missingColumns.length > 0) {
+      return NextResponse.json({
+        error: `${importLocation}工资表模板关键表头缺失，已停止导入，避免导入错列`,
+        data: {
+          format: importLocation,
+          sheetName,
+          missingColumns: templateValidation.missingColumns,
+          detectedHeaders: templateValidation.detectedHeaders,
+        },
+      }, { status: 400 });
+    }
+
     const parsedRecords = salaryFormat === 'office'
       ? parseOfficeSalaryRows(data)
       : parseWorkshopSalaryRows(data);
@@ -190,6 +203,21 @@ export async function POST(request: NextRequest) {
           month: yearMonth.month,
           location: importLocation,
           parsed: 0,
+        },
+      }, { status: 400 });
+    }
+
+    const validationIssues = validateParsedSalaryRecords(parsedRecords, salaryFormat);
+    if (validationIssues.length > 0) {
+      return NextResponse.json({
+        error: `${importLocation}工资表金额校验未通过，已停止导入，请先检查工资表`,
+        data: {
+          format: importLocation,
+          year: yearMonth.year,
+          month: yearMonth.month,
+          parsed: parsedRecords.length,
+          issueCount: validationIssues.length,
+          issues: validationIssues.slice(0, 20),
         },
       }, { status: 400 });
     }
@@ -274,7 +302,6 @@ function detectSalaryFormat(workbook: XLSX.WorkBook, data: CellValue[][]): Salar
 
   if (
     searchableText.includes('是否全勤') ||
-    searchableText.includes('生产部') ||
     searchableText.includes('应出勤小时') ||
     searchableText.includes('正班满勤小时') ||
     searchableText.includes('月度出勤记录')
@@ -295,6 +322,24 @@ function detectSalaryFormat(workbook: XLSX.WorkBook, data: CellValue[][]): Salar
 
   return null;
 }
+
+type ColumnLookup = {
+  firstDataRowIndex: number;
+  labels: string[];
+  find: (aliases: string[], fallback?: number, occurrence?: number) => number;
+};
+
+type ColumnRequirement = {
+  label: string;
+  aliases: string[];
+  occurrence?: number;
+};
+
+type SalaryValidationIssue = {
+  name: string;
+  field: string;
+  message: string;
+};
 
 function resolveYearMonth(body: Record<string, unknown>, fileName: string, sheetName: string, data: CellValue[][]): YearMonth | null {
   const inferred = extractYearMonth(fileName, sheetName, data);
@@ -365,11 +410,199 @@ function extractYearMonth(fileName: string, sheetName: string, data: CellValue[]
   return null;
 }
 
+function createSalaryColumnLookup(data: CellValue[][]): ColumnLookup {
+  const firstDataRowIndex = data.findIndex((row) => isLikelySalaryDataRow(row));
+  const headerEnd = firstDataRowIndex >= 0 ? firstDataRowIndex : Math.min(data.length, 8);
+  const headerRows = data.slice(0, headerEnd);
+  const maxColumns = Math.max(
+    0,
+    ...headerRows.map((row) => row.length),
+    ...data.slice(0, Math.max(headerEnd + 1, 8)).map((row) => row.length),
+  );
+  const labels = Array.from({ length: maxColumns }, (_, columnIndex) => (
+    headerRows
+      .map((row) => cellText(row[columnIndex]))
+      .filter(Boolean)
+      .join('')
+  ));
+  const normalizedLabels = labels.map(normalizeHeaderText);
+
+  return {
+    firstDataRowIndex,
+    labels,
+    find(aliases: string[], fallback = -1, occurrence = 0) {
+      const normalizedAliases = aliases.map(normalizeHeaderText).filter(Boolean);
+      if (normalizedAliases.length === 0) {
+        return fallback;
+      }
+
+      const findMatch = (matcher: (label: string, alias: string) => boolean) => {
+        const matches: number[] = [];
+        normalizedLabels.forEach((label, index) => {
+          if (label && normalizedAliases.some((alias) => matcher(label, alias))) {
+            matches.push(index);
+          }
+        });
+        return matches[occurrence] ?? -1;
+      };
+
+      const exactColumn = findMatch((label, alias) => label === alias);
+      if (exactColumn >= 0) {
+        return exactColumn;
+      }
+
+      const endingColumn = findMatch((label, alias) => label.endsWith(alias));
+      if (endingColumn >= 0) {
+        return endingColumn;
+      }
+
+      const containingColumn = findMatch((label, alias) => label.includes(alias));
+      if (containingColumn >= 0) {
+        return containingColumn;
+      }
+
+      return fallback;
+    },
+  };
+}
+
+function columnValue(row: CellValue[], lookup: ColumnLookup, aliases: string[], fallback = -1, occurrence = 0) {
+  const column = lookup.find(aliases, fallback, occurrence);
+  return column >= 0 ? row[column] : '';
+}
+
+function textByColumn(row: CellValue[], lookup: ColumnLookup, aliases: string[], fallback = -1, occurrence = 0) {
+  return cellText(columnValue(row, lookup, aliases, fallback, occurrence));
+}
+
+function numberByColumn(row: CellValue[], lookup: ColumnLookup, aliases: string[], fallback = -1, defaultValue = 0, occurrence = 0) {
+  return parseNumber(columnValue(row, lookup, aliases, fallback, occurrence), defaultValue);
+}
+
+function cleanBankAccount(value: CellValue) {
+  return cellText(value).split(/[（(]/)[0].trim();
+}
+
+function validateSalaryTemplate(data: CellValue[][], format: SalaryFormat) {
+  const lookup = createSalaryColumnLookup(data);
+  const requiredColumns: Record<SalaryFormat, ColumnRequirement[]> = {
+    office: [
+      { label: '姓名', aliases: ['姓名'] },
+      { label: '部门', aliases: ['部门'] },
+      { label: '基本工资', aliases: ['基本工资'] },
+      { label: '正班实际出勤天数', aliases: ['正班实际出勤天数', '实际出勤天数'] },
+      { label: '应领工资', aliases: ['应领工资'] },
+      { label: '税前工资', aliases: ['税前工资'] },
+      { label: '个人所得税', aliases: ['个人所得税'] },
+      { label: '实发工资', aliases: ['实发工资'] },
+    ],
+    workshop: [
+      { label: '姓名', aliases: ['姓名'] },
+      { label: '是否全勤', aliases: ['是否全勤'] },
+      { label: '底薪', aliases: ['底薪', '基本工资'] },
+      { label: '应出勤小时', aliases: ['应出勤小时'] },
+      { label: '正班小时', aliases: ['正班小时'] },
+      { label: '平时加班小时', aliases: ['平时加班小时'] },
+      { label: '周末加班小时', aliases: ['周末加班小时'] },
+      { label: '实际正班出勤工资', aliases: ['实际正班出勤工资'] },
+      { label: '平时加班工资', aliases: ['平时加班工资'] },
+      { label: '周末加班工资', aliases: ['周末加班工资'] },
+      { label: '应付工资合计', aliases: ['应付工资合计'] },
+      { label: '应扣款合计', aliases: ['应扣款合计'] },
+      { label: '实发金额', aliases: ['实发金额', '实发工资'] },
+    ],
+  };
+
+  const missingColumns = requiredColumns[format]
+    .filter((requirement) => (
+      lookup.find(requirement.aliases, -1, requirement.occurrence ?? 0) < 0
+    ))
+    .map((requirement) => requirement.label);
+
+  return {
+    missingColumns,
+    detectedHeaders: lookup.labels.filter(Boolean),
+  };
+}
+
+function validateParsedSalaryRecords(records: ParsedSalaryRecord[], format: SalaryFormat) {
+  return format === 'office'
+    ? validateOfficeSalaryRecords(records as OfficeSalaryRecord[])
+    : validateWorkshopSalaryRecords(records as WorkshopSalaryRecord[]);
+}
+
+function validateOfficeSalaryRecords(records: OfficeSalaryRecord[]) {
+  const issues: SalaryValidationIssue[] = [];
+
+  for (const record of records) {
+    if (record.actualAmount === 0 && record.totalPayable === 0) {
+      continue;
+    }
+
+    const expectedActual = record.preTaxSalary - record.incomeTax;
+    if (!amountsClose(record.actualAmount, expectedActual)) {
+      issues.push({
+        name: record.name,
+        field: '实发工资',
+        message: `实发工资 ${formatNumber(record.actualAmount)} 与 税前工资-个人所得税 ${formatNumber(expectedActual)} 不一致`,
+      });
+    }
+  }
+
+  return issues;
+}
+
+function validateWorkshopSalaryRecords(records: WorkshopSalaryRecord[]) {
+  const issues: SalaryValidationIssue[] = [];
+
+  for (const record of records) {
+    if (record.actualAmount === 0 && record.totalPayable === 0) {
+      continue;
+    }
+
+    const expectedDeduction = (
+      record.deductSocialSecurity +
+      record.deductLoan +
+      record.deductUrgent +
+      record.deductOther +
+      record.deductUtilities
+    );
+    if (!amountsClose(record.totalDeduction, expectedDeduction)) {
+      issues.push({
+        name: record.name,
+        field: '应扣款合计',
+        message: `应扣款合计 ${formatNumber(record.totalDeduction)} 与各扣款项合计 ${formatNumber(expectedDeduction)} 不一致`,
+      });
+    }
+
+    const expectedActual = record.totalPayable - record.totalDeduction;
+    if (!amountsClose(record.actualAmount, expectedActual)) {
+      issues.push({
+        name: record.name,
+        field: '实发金额',
+        message: `实发金额 ${formatNumber(record.actualAmount)} 与 应付工资合计-应扣款合计 ${formatNumber(expectedActual)} 不一致`,
+      });
+    }
+  }
+
+  return issues;
+}
+
+function amountsClose(left: number, right: number) {
+  return Math.abs(left - right) <= 0.05;
+}
+
+function formatNumber(value: number) {
+  return Number(value.toFixed(2)).toString();
+}
+
 function parseOfficeSalaryRows(data: CellValue[][]): OfficeSalaryRecord[] {
   const records: OfficeSalaryRecord[] = [];
+  const lookup = createSalaryColumnLookup(data);
+  const rows = data.slice(lookup.firstDataRowIndex >= 0 ? lookup.firstDataRowIndex : 0);
 
-  for (const row of data) {
-    const name = cellText(row?.[1]);
+  for (const row of rows) {
+    const name = textByColumn(row, lookup, ['姓名'], 1);
     if (!name || name === '姓名' || name === '合计') {
       continue;
     }
@@ -380,38 +613,38 @@ function parseOfficeSalaryRows(data: CellValue[][]): OfficeSalaryRecord[] {
 
     records.push({
       name,
-      department: cellText(row[3]),
-      baseSalary: parseNumber(row[4]),
-      shouldAttendDays: parseNumber(row[5], 22),
-      saturdayDays: parseNumber(row[6], 4),
-      normalAttendanceDays: parseNumber(row[7]),
-      paidLeaveDays: parseNumber(row[8]),
-      weekdayOvertime: parseNumber(row[9]),
-      weekendOvertime: parseNumber(row[10]),
-      holidayOvertime: parseNumber(row[11]),
-      normalPay: parseNumber(row[12]),
-      holidayVacationPay: parseNumber(row[13]),
-      weekdayOvertimePay: parseNumber(row[14]),
-      weekendOvertimePay: parseNumber(row[15]),
-      holidayOvertimePay: parseNumber(row[16]),
-      performanceBonus: parseNumber(row[17]),
-      mealSubsidy: parseNumber(row[18]),
-      housingSubsidy: parseNumber(row[19]),
-      transportSubsidy: parseNumber(row[20]),
-      subsidy: parseNumber(row[21]),
-      fine: parseNumber(row[22]),
-      otherDeduct: parseNumber(row[23]),
-      utilities: parseNumber(row[24]),
-      totalPayable: parseNumber(row[25]),
-      housingFund: parseNumber(row[26]),
-      socialInsurance: parseNumber(row[27]),
-      socialSecurityAdjust: parseNumber(row[28]),
-      socialSecuritySubsidy: parseNumber(row[29]),
-      preTaxSalary: parseNumber(row[30]),
-      incomeTax: parseNumber(row[31]),
-      actualAmount: parseNumber(row[32]),
-      bankAccount: cellText(row[34]).split(/[（(]/)[0].trim(),
-      remark: cellText(row[35]),
+      department: textByColumn(row, lookup, ['部门'], 4),
+      baseSalary: numberByColumn(row, lookup, ['基本工资'], 5),
+      shouldAttendDays: numberByColumn(row, lookup, ['正班应出勤天数', '应出勤天数'], 6, 22),
+      saturdayDays: numberByColumn(row, lookup, ['当月周六天数', '周六天数'], 7, 4),
+      normalAttendanceDays: numberByColumn(row, lookup, ['正班实际出勤天数', '实际出勤天数'], 8),
+      paidLeaveDays: numberByColumn(row, lookup, ['本月已休带薪假', '带薪假'], 9),
+      weekdayOvertime: numberByColumn(row, lookup, ['平时加班时间', '平时加班'], 10),
+      weekendOvertime: numberByColumn(row, lookup, ['周未加班时间', '周末加班时间', '周末加班'], 11),
+      holidayOvertime: numberByColumn(row, lookup, ['法定日加班', '法定节假加班'], 12),
+      normalPay: numberByColumn(row, lookup, ['实际出勤工资'], 13),
+      holidayVacationPay: numberByColumn(row, lookup, ['本月法定日休假工资', '法定日休假工资'], 14),
+      weekdayOvertimePay: numberByColumn(row, lookup, ['平时加班工资'], 15),
+      weekendOvertimePay: numberByColumn(row, lookup, ['周未加班工资', '周末加班工资'], 16),
+      holidayOvertimePay: numberByColumn(row, lookup, ['法定日加班工资', '法定节假加班工资'], 17),
+      performanceBonus: numberByColumn(row, lookup, ['绩效奖金', '绩效奖金浮动'], 18),
+      mealSubsidy: numberByColumn(row, lookup, ['用餐补贴'], 19),
+      housingSubsidy: numberByColumn(row, lookup, ['住房补贴'], 20),
+      transportSubsidy: numberByColumn(row, lookup, ['交通补贴'], 21),
+      subsidy: numberByColumn(row, lookup, ['补贴'], 22),
+      fine: numberByColumn(row, lookup, ['扣款', '扣款如有填负数'], 23),
+      otherDeduct: numberByColumn(row, lookup, ['其他扣款', '其他扣款如有填负数'], 24),
+      utilities: numberByColumn(row, lookup, ['水电费'], 25),
+      totalPayable: numberByColumn(row, lookup, ['应领工资'], 26),
+      housingFund: numberByColumn(row, lookup, ['公积金'], 27),
+      socialInsurance: numberByColumn(row, lookup, ['社会保险'], 28),
+      socialSecurityAdjust: numberByColumn(row, lookup, ['社保养老调'], 29),
+      socialSecuritySubsidy: numberByColumn(row, lookup, ['社保补贴'], 30),
+      preTaxSalary: numberByColumn(row, lookup, ['税前工资'], 31),
+      incomeTax: numberByColumn(row, lookup, ['个人所得税'], 32),
+      actualAmount: numberByColumn(row, lookup, ['实发工资'], 33),
+      bankAccount: cleanBankAccount(columnValue(row, lookup, ['银行卡号'], 35)),
+      remark: textByColumn(row, lookup, ['备注'], 36),
     });
   }
 
@@ -420,9 +653,11 @@ function parseOfficeSalaryRows(data: CellValue[][]): OfficeSalaryRecord[] {
 
 function parseWorkshopSalaryRows(data: CellValue[][]): WorkshopSalaryRecord[] {
   const records: WorkshopSalaryRecord[] = [];
+  const lookup = createSalaryColumnLookup(data);
+  const rows = data.slice(lookup.firstDataRowIndex >= 0 ? lookup.firstDataRowIndex : 0);
 
-  for (const row of data) {
-    const name = cellText(row?.[1]);
+  for (const row of rows) {
+    const name = textByColumn(row, lookup, ['姓名'], 1);
     if (!name || name === '姓名') {
       continue;
     }
@@ -433,49 +668,49 @@ function parseWorkshopSalaryRows(data: CellValue[][]): WorkshopSalaryRecord[] {
 
     records.push({
       name,
-      isFullAttendance: cellText(row[2]) === '是' ? '是' : '否',
-      idCard: cellText(row[3]),
-      bankAccount: cellText(row[4]),
-      bankName: cellText(row[5]),
-      baseSalary: parseNumber(row[6]),
-      performanceAllowance: parseNumber(row[7]),
-      otherSubsidy: parseNumber(row[8]),
-      requiredHours: parseNumber(row[9], 176),
-      normalFullAttendance: parseNumber(row[10], 176),
-      normalHours: parseNumber(row[11]),
-      weekdayOvertime: parseNumber(row[12]),
-      weekendOvertime: parseNumber(row[13]),
-      holidayOvertime: parseNumber(row[14]),
-      nightShift: parseNumber(row[15]),
-      absentDays: parseNumber(row[16]),
-      personalLeave: parseNumber(row[17]),
-      sickLeave: parseNumber(row[18]),
-      lateEarlyMinutes: parseNumber(row[19]),
-      lateEarlyCount: parseNumber(row[20]),
-      signCardCount: parseNumber(row[21]),
-      evalCoeff: parseNumber(row[22], 1),
-      normalPay: parseNumber(row[23]),
-      performancePay: parseNumber(row[24]),
-      weekdayOvertimePay: parseNumber(row[25]),
-      weekendOvertimePay: parseNumber(row[26]),
-      holidayOvertimePay: parseNumber(row[27]),
-      sickPay: parseNumber(row[28]),
-      livingSubsidy: parseNumber(row[29]),
-      otherPay: parseNumber(row[30]),
-      seniorityAward: parseNumber(row[31]),
-      fullAttendanceAward: parseNumber(row[32]),
-      positionSubsidy: parseNumber(row[33]),
-      workReward: parseNumber(row[34]),
-      springFestivalSubsidy: parseNumber(row[35]),
-      socialSecuritySubsidy: parseNumber(row[36]),
-      totalPayable: parseNumber(row[37]),
-      deductSocialSecurity: parseNumber(row[38]),
-      deductLoan: parseNumber(row[39]),
-      deductUrgent: parseNumber(row[40]),
-      deductOther: parseNumber(row[41]),
-      deductUtilities: parseNumber(row[42]),
-      totalDeduction: parseNumber(row[43]),
-      actualAmount: parseNumber(row[44]),
+      isFullAttendance: textByColumn(row, lookup, ['是否全勤'], 2) === '是' ? '是' : '否',
+      idCard: textByColumn(row, lookup, ['身份证号', '身份证']),
+      bankAccount: cleanBankAccount(columnValue(row, lookup, ['银行卡号'])),
+      bankName: textByColumn(row, lookup, ['开户行', '银行名称', '银行']),
+      baseSalary: numberByColumn(row, lookup, ['底薪', '基本工资'], 3),
+      performanceAllowance: numberByColumn(row, lookup, ['绩效津贴'], 4),
+      otherSubsidy: numberByColumn(row, lookup, ['其他补贴'], 5),
+      requiredHours: numberByColumn(row, lookup, ['应出勤小时'], 6, 176),
+      normalFullAttendance: numberByColumn(row, lookup, ['正班满勤小时'], 7, 176),
+      normalHours: numberByColumn(row, lookup, ['正班小时'], 8),
+      weekdayOvertime: numberByColumn(row, lookup, ['平时加班小时'], 9),
+      weekendOvertime: numberByColumn(row, lookup, ['周末加班小时'], 10),
+      holidayOvertime: numberByColumn(row, lookup, ['法定节假加班小时', '法定日加班小时'], 11),
+      nightShift: numberByColumn(row, lookup, ['夜班天', '夜班'], 12),
+      absentDays: numberByColumn(row, lookup, ['旷工'], 13),
+      personalLeave: numberByColumn(row, lookup, ['事假'], 14),
+      sickLeave: numberByColumn(row, lookup, ['病假'], 15),
+      lateEarlyMinutes: numberByColumn(row, lookup, ['迟到早退分'], 16),
+      lateEarlyCount: numberByColumn(row, lookup, ['迟到早退次'], 17),
+      signCardCount: numberByColumn(row, lookup, ['签卡次数'], 18),
+      evalCoeff: numberByColumn(row, lookup, ['考核评价系数'], 19, 1),
+      normalPay: numberByColumn(row, lookup, ['实际正班出勤工资'], 20),
+      performancePay: numberByColumn(row, lookup, ['绩效津贴工资'], 21),
+      weekdayOvertimePay: numberByColumn(row, lookup, ['平时加班工资'], 22),
+      weekendOvertimePay: numberByColumn(row, lookup, ['周末加班工资'], 23),
+      holidayOvertimePay: numberByColumn(row, lookup, ['法定节假加班工资', '法定日加班工资'], 24),
+      sickPay: numberByColumn(row, lookup, ['病假工资'], 25),
+      livingSubsidy: numberByColumn(row, lookup, ['生活补贴'], 26),
+      otherPay: numberByColumn(row, lookup, ['其他补贴'], 27, 0, 1),
+      seniorityAward: numberByColumn(row, lookup, ['工龄奖'], 28),
+      fullAttendanceAward: numberByColumn(row, lookup, ['全勤奖'], 29),
+      positionSubsidy: numberByColumn(row, lookup, ['岗位补贴'], 30),
+      workReward: numberByColumn(row, lookup, ['工作奖励'], 31),
+      springFestivalSubsidy: numberByColumn(row, lookup, ['春节按时返岗补贴'], 32),
+      socialSecuritySubsidy: numberByColumn(row, lookup, ['社保补贴'], 33),
+      totalPayable: numberByColumn(row, lookup, ['应付工资合计'], 34),
+      deductSocialSecurity: numberByColumn(row, lookup, ['扣社保'], 35),
+      deductLoan: numberByColumn(row, lookup, ['借款'], 36),
+      deductUrgent: numberByColumn(row, lookup, ['急辞扣款'], 37),
+      deductOther: numberByColumn(row, lookup, ['其他'], 38),
+      deductUtilities: numberByColumn(row, lookup, ['本月水电费', '水电费'], 39),
+      totalDeduction: numberByColumn(row, lookup, ['应扣款合计'], 40),
+      actualAmount: numberByColumn(row, lookup, ['实发金额', '实发工资'], 41),
     });
   }
 
@@ -741,6 +976,12 @@ function cellText(value: CellValue) {
 
 function normalizeText(value: string) {
   return value.replace(/\s+/g, '').replace(/：/g, ':');
+}
+
+function normalizeHeaderText(value: string) {
+  return normalizeText(value)
+    .replace(/[()（）:;；,，、|\[\]【】{}]/g, '')
+    .replace(/[A-Za-z]/g, '');
 }
 
 function toValidYear(value: unknown) {

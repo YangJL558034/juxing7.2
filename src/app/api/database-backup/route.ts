@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 import { verifyToken } from '@/lib/auth';
-import { db, getDatabaseFilePath } from '@/lib/database';
+import { db, getDatabaseFilePath, initDatabase } from '@/lib/database';
 import { chinaNowSql } from '@/lib/china-time';
 
 export const runtime = 'nodejs';
@@ -16,7 +16,7 @@ interface BackupSettingsRow {
   last_backup_file: string | null;
 }
 
-const backupDir = path.join(process.cwd(), 'data', 'backups');
+const backupDir = path.join(/* turbopackIgnore: true */ process.cwd(), 'data', 'backups');
 const tempDir = path.join(backupDir, 'restore-temp');
 
 async function requireBackupUser(request: NextRequest) {
@@ -51,6 +51,31 @@ function quoteIdentifier(value: string) {
 
 function sqlString(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
+}
+
+interface TableColumnInfo {
+  name: string;
+  type: string;
+  notnull: number;
+  dflt_value: string | null;
+  pk: number;
+}
+
+function getTableColumns(schema: 'main' | 'restore_db', tableName: string) {
+  return db.prepare(`PRAGMA ${schema}.table_info(${quoteIdentifier(tableName)})`).all() as TableColumnInfo[];
+}
+
+function fallbackSqlForColumn(column: TableColumnInfo) {
+  if (column.dflt_value !== null && column.dflt_value !== undefined) return String(column.dflt_value);
+  if (column.pk) return 'NULL';
+  if (column.name === 'data_json') return "'{}'";
+  if (!column.notnull) return 'NULL';
+
+  const type = String(column.type || '').toUpperCase();
+  if (type.includes('INT') || type.includes('REAL') || type.includes('NUM') || type.includes('DEC')) {
+    return '0';
+  }
+  return "''";
 }
 
 async function ensureBackupDir() {
@@ -217,10 +242,30 @@ function restoreDataFromBackup(filePath: string) {
     }
 
     for (const table of restoreTables) {
-      if (!mainSet.has(table.name) && table.sql) {
-        db.exec(table.sql);
+      if (!mainSet.has(table.name)) {
+        if (table.sql) {
+          db.exec(table.sql);
+          db.exec(`INSERT INTO main.${quoteIdentifier(table.name)} SELECT * FROM restore_db.${quoteIdentifier(table.name)}`);
+        }
+        continue;
       }
-      db.exec(`INSERT INTO main.${quoteIdentifier(table.name)} SELECT * FROM restore_db.${quoteIdentifier(table.name)}`);
+
+      const mainColumns = getTableColumns('main', table.name);
+      const restoreColumns = getTableColumns('restore_db', table.name);
+      const restoreColumnNames = new Set(restoreColumns.map(column => column.name));
+      if (mainColumns.length === 0 || restoreColumns.length === 0) continue;
+
+      const insertColumns = mainColumns.map(column => quoteIdentifier(column.name)).join(', ');
+      const selectColumns = mainColumns.map((column) => {
+        if (restoreColumnNames.has(column.name)) return quoteIdentifier(column.name);
+        return `${fallbackSqlForColumn(column)} AS ${quoteIdentifier(column.name)}`;
+      }).join(', ');
+
+      db.exec(`
+        INSERT INTO main.${quoteIdentifier(table.name)} (${insertColumns})
+        SELECT ${selectColumns}
+        FROM restore_db.${quoteIdentifier(table.name)}
+      `);
     }
 
     try {
@@ -251,6 +296,7 @@ function restoreDataFromBackup(filePath: string) {
   }
 
   ensurePostRestoreSeeds();
+  initDatabase(db as SQLite.Database);
 }
 
 export async function GET(request: NextRequest) {

@@ -395,7 +395,7 @@ export default function RecruitmentPage() {
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-100 bg-white/95 px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur">
           <div className="mx-auto flex max-w-[430px] gap-3">
             <Button variant="outline" className="h-12 flex-1" onClick={() => setMode('detail')} disabled={submitting}>上一步</Button>
-            <Button className="h-12 flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => void submit()} disabled={submitting}>
+            <Button className="mobile-submit-button h-12 flex-1 bg-blue-600 hover:bg-blue-700" onClick={() => void submit()} disabled={submitting}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               提交
             </Button>

@@ -10,7 +10,7 @@ const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build';
 // 数据库文件路径
 const getDbPath = () => process.env.COZE_PROJECT_ENV === 'PROD' 
   ? '/tmp/crm.db'  // 生产环境使用 /tmp
-  : path.join(process.cwd(), 'data', 'crm.db');
+  : path.join(/* turbopackIgnore: true */ process.cwd(), 'data', 'crm.db');
 
 export function getDatabaseFilePath() {
   return getDbPath();
@@ -39,7 +39,7 @@ async function runScheduledDatabaseBackup(dbInstance: Database.Database) {
     const intervalMs = Math.max(1, Number(settings.interval_hours || 24)) * 60 * 60 * 1000;
     if (lastTime && Date.now() < lastTime + intervalMs) return;
 
-    const backupDir = path.join(process.cwd(), 'data', 'backups');
+    const backupDir = path.join(/* turbopackIgnore: true */ process.cwd(), 'data', 'backups');
     if (!fs.existsSync(backupDir)) {
       fs.mkdirSync(backupDir, { recursive: true });
     }
@@ -82,7 +82,6 @@ const chinaTimestampSql = "datetime('now', '+8 hours')";
 const timestampColumns = [
   'created_at',
   'updated_at',
-  'deleted_at',
   'changed_at',
   'reviewed_at',
   'checked_in_at',
@@ -95,6 +94,22 @@ const timestampColumns = [
 
 function quoteIdentifier(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
+}
+
+function ensureColumns(
+  dbInstance: Database.Database,
+  tableName: string,
+  columns: { name: string; definition: string }[],
+) {
+  const existingColumns = dbInstance.prepare(`PRAGMA table_info(${quoteIdentifier(tableName)})`).all() as { name: string }[];
+  const existingNames = new Set(existingColumns.map(col => col.name));
+  const quotedTableName = quoteIdentifier(tableName);
+
+  for (const column of columns) {
+    if (existingNames.has(column.name)) continue;
+    dbInstance.exec(`ALTER TABLE ${quotedTableName} ADD COLUMN ${quoteIdentifier(column.name)} ${column.definition}`);
+    existingNames.add(column.name);
+  }
 }
 
 function ensureChinaTimeTriggers(dbInstance: Database.Database) {
@@ -114,6 +129,9 @@ function ensureChinaTimeTriggers(dbInstance: Database.Database) {
     if (existingTimestampColumns.length === 0) continue;
 
     const tableName = quoteIdentifier(table.name);
+    dbInstance.exec(`DROP TRIGGER IF EXISTS ${quoteIdentifier(`trg_${table.name}_china_time_insert`)}`);
+    dbInstance.exec(`DROP TRIGGER IF EXISTS ${quoteIdentifier(`trg_${table.name}_china_time_update`)}`);
+
     const insertAssignments = existingTimestampColumns.map(col => {
       const columnName = quoteIdentifier(col);
       return `${columnName} = CASE WHEN NEW.${columnName} IS NULL OR NEW.${columnName} = CURRENT_TIMESTAMP THEN ${chinaTimestampSql} ELSE NEW.${columnName} END`;
@@ -405,6 +423,134 @@ export function initDatabase(dbInstance: Database.Database) {
       FOREIGN KEY (employee_id) REFERENCES employees(id)
     );
 
+    CREATE TABLE IF NOT EXISTS regularization_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      status TEXT DEFAULT '待处理',
+      applicant_name TEXT NOT NULL,
+      department TEXT,
+      position TEXT,
+      hire_date TEXT,
+      regularization_date TEXT,
+      data_json TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME,
+      deleted_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS work_certificate_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      status TEXT DEFAULT '待审核',
+      name TEXT NOT NULL,
+      gender TEXT,
+      id_card TEXT,
+      phone TEXT,
+      department TEXT,
+      position TEXT,
+      hire_date TEXT,
+      purpose TEXT,
+      data_json TEXT NOT NULL,
+      reviewer_name TEXT,
+      reviewed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME,
+      deleted_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS labor_contract_termination_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_name TEXT NOT NULL,
+      honorific TEXT,
+      termination_date TEXT,
+      reason TEXT,
+      procedure_deadline TEXT,
+      company_name TEXT,
+      notice_date TEXT,
+      data_json TEXT NOT NULL,
+      created_by_name TEXT,
+      exported_at DATETIME,
+      printed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME,
+      deleted_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS resignation_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      status TEXT DEFAULT '待审核',
+      name TEXT NOT NULL,
+      employee_no TEXT,
+      department TEXT,
+      id_card TEXT,
+      position TEXT,
+      hire_date TEXT,
+      contract_end_date TEXT,
+      apply_date TEXT,
+      resignation_date TEXT,
+      handover_date TEXT,
+      resignation_type TEXT,
+      data_json TEXT NOT NULL,
+      reviewer_name TEXT,
+      reviewed_at DATETIME,
+      exported_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME,
+      deleted_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS resignation_certificate_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      status TEXT DEFAULT '待审核',
+      certificate_type TEXT DEFAULT 'personal',
+      employee_name TEXT NOT NULL,
+      id_card TEXT,
+      phone TEXT,
+      email TEXT,
+      honorific TEXT,
+      department TEXT,
+      position TEXT,
+      hire_date TEXT,
+      leave_date TEXT,
+      issue_date TEXT,
+      company_name TEXT,
+      receipt_date TEXT,
+      data_json TEXT NOT NULL,
+      created_by_name TEXT,
+      reviewer_name TEXT,
+      reviewed_at DATETIME,
+      review_remark TEXT,
+      stamped_file_name TEXT,
+      stamped_file_mime TEXT,
+      stamped_file_data TEXT,
+      completed_at DATETIME,
+      email_sent_at DATETIME,
+      email_error TEXT,
+      certificate_exported_at DATETIME,
+      receipt_exported_at DATETIME,
+      certificate_printed_at DATETIME,
+      receipt_printed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME,
+      deleted_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS social_security_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      document_type TEXT NOT NULL,
+      status TEXT DEFAULT '待处理',
+      name TEXT NOT NULL,
+      id_card TEXT,
+      phone TEXT,
+      department TEXT,
+      position TEXT,
+      hire_date TEXT,
+      application_date TEXT,
+      data_json TEXT NOT NULL,
+      exported_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME,
+      deleted_at DATETIME
+    );
+
     CREATE TABLE IF NOT EXISTS dormitory_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       status TEXT DEFAULT '待审核',
@@ -626,10 +772,111 @@ export function initDatabase(dbInstance: Database.Database) {
     )
   `);
 
+  try {
+    ensureColumns(dbInstance, 'employees', [
+      { name: 'employee_id', definition: 'TEXT' },
+      { name: 'name', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'phone', definition: 'TEXT' },
+      { name: 'department', definition: 'TEXT' },
+      { name: 'position', definition: 'TEXT' },
+      { name: 'base_salary', definition: 'REAL DEFAULT 0' },
+      { name: 'status', definition: 'TEXT' },
+      { name: 'location', definition: 'TEXT' },
+      { name: 'resign_date', definition: 'TEXT' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'hire_date', definition: 'TEXT' },
+      { name: 'department_id', definition: 'INTEGER' },
+      { name: 'position_id', definition: 'INTEGER' },
+      { name: 'manager_id', definition: 'INTEGER' },
+      { name: 'user_id', definition: 'INTEGER' },
+    ]);
+
+    ensureColumns(dbInstance, 'onboarding_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'name', definition: 'TEXT' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+    ]);
+    ensureColumns(dbInstance, 'regularization_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'applicant_name', definition: 'TEXT' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+    ]);
+    ensureColumns(dbInstance, 'work_certificate_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'name', definition: 'TEXT' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+    ]);
+    ensureColumns(dbInstance, 'labor_contract_termination_records', [
+      { name: 'employee_name', definition: 'TEXT' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+    ensureColumns(dbInstance, 'resignation_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'name', definition: 'TEXT' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+    ensureColumns(dbInstance, 'resignation_certificate_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'employee_name', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+    ensureColumns(dbInstance, 'social_security_records', [
+      { name: 'document_type', definition: 'TEXT' },
+      { name: 'status', definition: 'TEXT' },
+      { name: 'name', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+    ensureColumns(dbInstance, 'dormitory_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'name', definition: 'TEXT' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+    ]);
+    ensureColumns(dbInstance, 'dormitory_room_change_records', [
+      { name: 'dormitory_record_id', definition: 'INTEGER' },
+      { name: 'changed_at', definition: 'DATETIME' },
+    ]);
+    ensureColumns(dbInstance, 'dormitory_delete_records', [
+      { name: 'deleted_at', definition: 'DATETIME' },
+      { name: 'deleted_by_user_id', definition: 'INTEGER' },
+    ]);
+  } catch (error) {
+    console.error('Pre-index compatibility migration failed:', error);
+  }
+
   dbInstance.exec(`
     CREATE INDEX IF NOT EXISTS idx_onboarding_status ON onboarding_records(status);
     CREATE INDEX IF NOT EXISTS idx_onboarding_name ON onboarding_records(name);
     CREATE INDEX IF NOT EXISTS idx_onboarding_created_at ON onboarding_records(created_at);
+    CREATE INDEX IF NOT EXISTS idx_regularization_status ON regularization_records(status);
+    CREATE INDEX IF NOT EXISTS idx_regularization_applicant_name ON regularization_records(applicant_name);
+    CREATE INDEX IF NOT EXISTS idx_regularization_created_at ON regularization_records(created_at);
+    CREATE INDEX IF NOT EXISTS idx_work_certificate_status ON work_certificate_records(status);
+    CREATE INDEX IF NOT EXISTS idx_work_certificate_name ON work_certificate_records(name);
+    CREATE INDEX IF NOT EXISTS idx_work_certificate_created_at ON work_certificate_records(created_at);
+    CREATE INDEX IF NOT EXISTS idx_labor_contract_termination_employee ON labor_contract_termination_records(employee_name);
+    CREATE INDEX IF NOT EXISTS idx_labor_contract_termination_created_at ON labor_contract_termination_records(created_at);
+    CREATE INDEX IF NOT EXISTS idx_labor_contract_termination_deleted_at ON labor_contract_termination_records(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_resignation_status ON resignation_records(status);
+    CREATE INDEX IF NOT EXISTS idx_resignation_name ON resignation_records(name);
+    CREATE INDEX IF NOT EXISTS idx_resignation_created_at ON resignation_records(created_at);
+    CREATE INDEX IF NOT EXISTS idx_resignation_deleted_at ON resignation_records(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_resignation_certificate_status ON resignation_certificate_records(status);
+    CREATE INDEX IF NOT EXISTS idx_resignation_certificate_employee ON resignation_certificate_records(employee_name);
+    CREATE INDEX IF NOT EXISTS idx_resignation_certificate_id_card ON resignation_certificate_records(id_card);
+    CREATE INDEX IF NOT EXISTS idx_resignation_certificate_created_at ON resignation_certificate_records(created_at);
+    CREATE INDEX IF NOT EXISTS idx_resignation_certificate_deleted_at ON resignation_certificate_records(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_social_security_type ON social_security_records(document_type);
+    CREATE INDEX IF NOT EXISTS idx_social_security_status ON social_security_records(status);
+    CREATE INDEX IF NOT EXISTS idx_social_security_name ON social_security_records(name);
+    CREATE INDEX IF NOT EXISTS idx_social_security_created_at ON social_security_records(created_at);
+    CREATE INDEX IF NOT EXISTS idx_social_security_deleted_at ON social_security_records(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_dormitory_status ON dormitory_records(status);
     CREATE INDEX IF NOT EXISTS idx_dormitory_name ON dormitory_records(name);
     CREATE INDEX IF NOT EXISTS idx_dormitory_created_at ON dormitory_records(created_at);
@@ -641,6 +888,215 @@ export function initDatabase(dbInstance: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_water_meter_room_no ON water_meter_records(room_no);
     CREATE INDEX IF NOT EXISTS idx_water_meter_reading_date ON water_meter_records(reading_date);
   `);
+
+  try {
+    ensureColumns(dbInstance, 'onboarding_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'name', definition: 'TEXT' },
+      { name: 'gender', definition: 'TEXT' },
+      { name: 'phone', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'position', definition: 'TEXT' },
+      { name: 'department', definition: 'TEXT' },
+      { name: 'hire_date', definition: 'TEXT' },
+      { name: 'recruitment_source', definition: 'TEXT' },
+      { name: 'data_json', definition: "TEXT DEFAULT '{}'" },
+      { name: 'reviewer_name', definition: 'TEXT' },
+      { name: 'hr_opinion', definition: 'TEXT' },
+      { name: 'reviewed_at', definition: 'DATETIME' },
+      { name: 'employee_id', definition: 'INTEGER' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', definition: 'DATETIME' },
+    ]);
+
+    ensureColumns(dbInstance, 'regularization_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'applicant_name', definition: 'TEXT' },
+      { name: 'department', definition: 'TEXT' },
+      { name: 'position', definition: 'TEXT' },
+      { name: 'hire_date', definition: 'TEXT' },
+      { name: 'regularization_date', definition: 'TEXT' },
+      { name: 'data_json', definition: "TEXT DEFAULT '{}'" },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', definition: 'DATETIME' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+
+    ensureColumns(dbInstance, 'work_certificate_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'name', definition: 'TEXT' },
+      { name: 'gender', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'phone', definition: 'TEXT' },
+      { name: 'department', definition: 'TEXT' },
+      { name: 'position', definition: 'TEXT' },
+      { name: 'hire_date', definition: 'TEXT' },
+      { name: 'purpose', definition: 'TEXT' },
+      { name: 'data_json', definition: "TEXT DEFAULT '{}'" },
+      { name: 'reviewer_name', definition: 'TEXT' },
+      { name: 'reviewed_at', definition: 'DATETIME' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', definition: 'DATETIME' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+
+    ensureColumns(dbInstance, 'labor_contract_termination_records', [
+      { name: 'employee_name', definition: 'TEXT' },
+      { name: 'honorific', definition: 'TEXT' },
+      { name: 'termination_date', definition: 'TEXT' },
+      { name: 'reason', definition: 'TEXT' },
+      { name: 'procedure_deadline', definition: 'TEXT' },
+      { name: 'company_name', definition: 'TEXT' },
+      { name: 'notice_date', definition: 'TEXT' },
+      { name: 'data_json', definition: "TEXT DEFAULT '{}'" },
+      { name: 'created_by_name', definition: 'TEXT' },
+      { name: 'exported_at', definition: 'DATETIME' },
+      { name: 'printed_at', definition: 'DATETIME' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', definition: 'DATETIME' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+
+    ensureColumns(dbInstance, 'resignation_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'name', definition: 'TEXT' },
+      { name: 'employee_no', definition: 'TEXT' },
+      { name: 'department', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'position', definition: 'TEXT' },
+      { name: 'hire_date', definition: 'TEXT' },
+      { name: 'contract_end_date', definition: 'TEXT' },
+      { name: 'apply_date', definition: 'TEXT' },
+      { name: 'resignation_date', definition: 'TEXT' },
+      { name: 'handover_date', definition: 'TEXT' },
+      { name: 'resignation_type', definition: 'TEXT' },
+      { name: 'data_json', definition: "TEXT DEFAULT '{}'" },
+      { name: 'reviewer_name', definition: 'TEXT' },
+      { name: 'reviewed_at', definition: 'DATETIME' },
+      { name: 'exported_at', definition: 'DATETIME' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', definition: 'DATETIME' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+
+    ensureColumns(dbInstance, 'resignation_certificate_records', [
+      { name: 'status', definition: 'TEXT' },
+      { name: 'certificate_type', definition: 'TEXT' },
+      { name: 'employee_name', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'phone', definition: 'TEXT' },
+      { name: 'email', definition: 'TEXT' },
+      { name: 'honorific', definition: 'TEXT' },
+      { name: 'department', definition: 'TEXT' },
+      { name: 'position', definition: 'TEXT' },
+      { name: 'hire_date', definition: 'TEXT' },
+      { name: 'leave_date', definition: 'TEXT' },
+      { name: 'issue_date', definition: 'TEXT' },
+      { name: 'company_name', definition: 'TEXT' },
+      { name: 'receipt_date', definition: 'TEXT' },
+      { name: 'data_json', definition: "TEXT DEFAULT '{}'" },
+      { name: 'created_by_name', definition: 'TEXT' },
+      { name: 'reviewer_name', definition: 'TEXT' },
+      { name: 'reviewed_at', definition: 'DATETIME' },
+      { name: 'review_remark', definition: 'TEXT' },
+      { name: 'stamped_file_name', definition: 'TEXT' },
+      { name: 'stamped_file_mime', definition: 'TEXT' },
+      { name: 'stamped_file_data', definition: 'TEXT' },
+      { name: 'completed_at', definition: 'DATETIME' },
+      { name: 'email_sent_at', definition: 'DATETIME' },
+      { name: 'email_error', definition: 'TEXT' },
+      { name: 'certificate_exported_at', definition: 'DATETIME' },
+      { name: 'receipt_exported_at', definition: 'DATETIME' },
+      { name: 'certificate_printed_at', definition: 'DATETIME' },
+      { name: 'receipt_printed_at', definition: 'DATETIME' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', definition: 'DATETIME' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+
+    ensureColumns(dbInstance, 'social_security_records', [
+      { name: 'document_type', definition: 'TEXT' },
+      { name: 'status', definition: 'TEXT' },
+      { name: 'name', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'phone', definition: 'TEXT' },
+      { name: 'department', definition: 'TEXT' },
+      { name: 'position', definition: 'TEXT' },
+      { name: 'hire_date', definition: 'TEXT' },
+      { name: 'application_date', definition: 'TEXT' },
+      { name: 'data_json', definition: "TEXT DEFAULT '{}'" },
+      { name: 'exported_at', definition: 'DATETIME' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', definition: 'DATETIME' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+  } catch (error) {
+    console.error('HR records compatibility migration failed:', error);
+  }
+
+  try {
+    const regularizationColumns = dbInstance.prepare("PRAGMA table_info(regularization_records)").all() as { name: string }[];
+    if (!regularizationColumns.some(col => col.name === 'deleted_at')) {
+      dbInstance.exec('ALTER TABLE regularization_records ADD COLUMN deleted_at DATETIME');
+    }
+    dbInstance.prepare("UPDATE regularization_records SET status = '已审核' WHERE status = '已导出'").run();
+    dbInstance.prepare("DELETE FROM regularization_records WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '+8 hours', '-7 days')").run();
+  } catch (error) {
+    console.error('Regularization status migration failed:', error);
+  }
+
+  try {
+    const workCertificateColumns = dbInstance.prepare("PRAGMA table_info(work_certificate_records)").all() as { name: string }[];
+    if (!workCertificateColumns.some(col => col.name === 'deleted_at')) {
+      dbInstance.exec('ALTER TABLE work_certificate_records ADD COLUMN deleted_at DATETIME');
+    }
+    dbInstance.prepare("DELETE FROM work_certificate_records WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '+8 hours', '-7 days')").run();
+  } catch (error) {
+    console.error('Work certificate status migration failed:', error);
+  }
+
+  try {
+    dbInstance.prepare("DELETE FROM labor_contract_termination_records WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '+8 hours', '-7 days')").run();
+  } catch (error) {
+    console.error('Labor contract termination cleanup failed:', error);
+  }
+
+  try {
+    dbInstance.prepare("DELETE FROM resignation_records WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '+8 hours', '-7 days')").run();
+  } catch (error) {
+    console.error('Resignation records cleanup failed:', error);
+  }
+
+  try {
+    const certificateColumns = dbInstance.prepare("PRAGMA table_info(resignation_certificate_records)").all() as { name: string }[];
+    const addColumnIfMissing = (name: string, definition: string) => {
+      if (!certificateColumns.some(col => col.name === name)) {
+        dbInstance.exec(`ALTER TABLE resignation_certificate_records ADD COLUMN ${name} ${definition}`);
+      }
+    };
+    addColumnIfMissing('status', "TEXT DEFAULT '待审核'");
+    addColumnIfMissing('id_card', 'TEXT');
+    addColumnIfMissing('phone', 'TEXT');
+    addColumnIfMissing('email', 'TEXT');
+    addColumnIfMissing('reviewer_name', 'TEXT');
+    addColumnIfMissing('reviewed_at', 'DATETIME');
+    addColumnIfMissing('review_remark', 'TEXT');
+    addColumnIfMissing('stamped_file_name', 'TEXT');
+    addColumnIfMissing('stamped_file_mime', 'TEXT');
+    addColumnIfMissing('stamped_file_data', 'TEXT');
+    addColumnIfMissing('completed_at', 'DATETIME');
+    addColumnIfMissing('email_sent_at', 'DATETIME');
+    addColumnIfMissing('email_error', 'TEXT');
+    dbInstance.prepare("DELETE FROM resignation_certificate_records WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '+8 hours', '-7 days')").run();
+  } catch (error) {
+    console.error('Resignation certificate records cleanup failed:', error);
+  }
+
+  try {
+    dbInstance.prepare("DELETE FROM social_security_records WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '+8 hours', '-7 days')").run();
+  } catch (error) {
+    console.error('Social security records cleanup failed:', error);
+  }
 
   try {
     const dormitoryColumns = dbInstance.prepare("PRAGMA table_info(dormitory_records)").all() as { name: string }[];
@@ -811,6 +1267,39 @@ export function initDatabase(dbInstance: Database.Database) {
     addColumnIfNotExists('total_payable', 'REAL DEFAULT 0');
     addColumnIfNotExists('deduction', 'REAL DEFAULT 0');
     addColumnIfNotExists('actual_amount', 'REAL DEFAULT 0');
+    // 车间工资条字段
+    addColumnIfNotExists('is_full_attendance', 'TEXT DEFAULT ""');
+    addColumnIfNotExists('id_card', 'TEXT DEFAULT ""');
+    addColumnIfNotExists('bank_name', 'TEXT DEFAULT ""');
+    addColumnIfNotExists('performance_allowance', 'REAL DEFAULT 0');
+    addColumnIfNotExists('other_subsidy_base', 'REAL DEFAULT 0');
+    addColumnIfNotExists('required_hours', 'REAL DEFAULT 176');
+    addColumnIfNotExists('full_attendance_hours', 'REAL DEFAULT 176');
+    addColumnIfNotExists('holiday_overtime_hours', 'REAL DEFAULT 0');
+    addColumnIfNotExists('night_shift_days', 'REAL DEFAULT 0');
+    addColumnIfNotExists('absent_days', 'REAL DEFAULT 0');
+    addColumnIfNotExists('personal_leave_hours', 'REAL DEFAULT 0');
+    addColumnIfNotExists('sick_leave_hours', 'REAL DEFAULT 0');
+    addColumnIfNotExists('late_early_minutes', 'REAL DEFAULT 0');
+    addColumnIfNotExists('late_early_count', 'REAL DEFAULT 0');
+    addColumnIfNotExists('sign_card_count', 'REAL DEFAULT 0');
+    addColumnIfNotExists('evaluation_coefficient', 'REAL DEFAULT 1');
+    addColumnIfNotExists('performance_pay', 'REAL DEFAULT 0');
+    addColumnIfNotExists('sick_pay', 'REAL DEFAULT 0');
+    addColumnIfNotExists('living_subsidy', 'REAL DEFAULT 0');
+    addColumnIfNotExists('other_pay', 'REAL DEFAULT 0');
+    addColumnIfNotExists('seniority_award', 'REAL DEFAULT 0');
+    addColumnIfNotExists('full_attendance_award', 'REAL DEFAULT 0');
+    addColumnIfNotExists('position_subsidy', 'REAL DEFAULT 0');
+    addColumnIfNotExists('work_reward', 'REAL DEFAULT 0');
+    addColumnIfNotExists('spring_festival_subsidy', 'REAL DEFAULT 0');
+    addColumnIfNotExists('social_security_subsidy', 'REAL DEFAULT 0');
+    addColumnIfNotExists('deduct_social_security', 'REAL DEFAULT 0');
+    addColumnIfNotExists('deduct_loan', 'REAL DEFAULT 0');
+    addColumnIfNotExists('deduct_urgent', 'REAL DEFAULT 0');
+    addColumnIfNotExists('deduct_other', 'REAL DEFAULT 0');
+    addColumnIfNotExists('deduct_utilities', 'REAL DEFAULT 0');
+    addColumnIfNotExists('total_deduction', 'REAL DEFAULT 0');
     // 办公室工资条额外字段
     addColumnIfNotExists('hire_date', 'TEXT');
     addColumnIfNotExists('employee_code', 'TEXT');
@@ -1792,24 +2281,16 @@ function cleanResignedEmployees(dbInstance: Database.Database) {
   try {
     const cutoffDate = formatChinaDateTime(Date.now() - 7 * 24 * 60 * 60 * 1000).slice(0, 10);
 
-    // 查找离职超过一周的员工
-    const resignedEmployees = dbInstance.prepare(`
-      SELECT id, name, resign_date FROM employees 
-      WHERE status = '离职' AND resign_date IS NOT NULL AND resign_date <= ?
-    `).all(cutoffDate) as { id: number; name: string; resign_date: string }[];
+    // Keep resigned employee, salary, and work-hour history for upgrade safety.
+    const row = dbInstance.prepare(`
+      SELECT COUNT(*) as count FROM employees
+      WHERE status = CAST(X'E7A6BBE8818C' AS TEXT)
+        AND resign_date IS NOT NULL
+        AND resign_date <= ?
+    `).get(cutoffDate) as { count: number } | undefined;
 
-    if (resignedEmployees.length > 0) {
-      console.log(`发现 ${resignedEmployees.length} 名离职超过一周的员工，开始清理...`);
-      
-      for (const emp of resignedEmployees) {
-        // 删除关联数据
-        dbInstance.prepare('DELETE FROM employee_work_records WHERE employee_id = ?').run(emp.id);
-        dbInstance.prepare('DELETE FROM employee_salary_records WHERE employee_id = ?').run(emp.id);
-        dbInstance.prepare('DELETE FROM work_hours_monthly WHERE employee_id = ?').run(emp.id);
-        // 删除员工记录
-        dbInstance.prepare('DELETE FROM employees WHERE id = ?').run(emp.id);
-        console.log(`已删除离职员工: ${emp.name} (离职日期: ${emp.resign_date})`);
-      }
+    if ((row?.count || 0) > 0) {
+      console.log(`Retained ${row?.count || 0} resigned employees older than 7 days; no salary/work-hour data was deleted.`);
     }
   } catch (e) {
     console.error('清理离职员工数据失败:', e);

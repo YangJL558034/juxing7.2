@@ -5,8 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   Download,
+  Eye,
   FileCheck2,
   Hourglass,
   Loader2,
@@ -14,7 +16,9 @@ import {
   Plus,
   Printer,
   RefreshCcw,
+  RotateCcw,
   Search,
+  Trash2,
   UserMinus,
   UserRound,
   X,
@@ -33,7 +37,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
@@ -47,6 +50,13 @@ import type {
   OnboardingRecord,
   OnboardingStatus,
 } from '@/types/onboarding';
+import type { RegularizationFormData, RegularizationRecord } from '@/types/regularization';
+import type { WorkCertificateFormData, WorkCertificateRecord } from '@/types/work-certificate';
+import type { LaborContractTerminationFormData, LaborContractTerminationRecord } from '@/types/labor-contract-termination';
+import ResignationAdminSection from './ResignationAdminSection';
+import ResignationCertificateAdminSection from './ResignationCertificateAdminSection';
+import SocialSecurityAdminSection from './SocialSecurityAdminSection';
+import YearMonthGroupedTableBody from './YearMonthGroupedTableBody';
 
 interface OnboardingCounts {
   total: number;
@@ -65,6 +75,42 @@ interface ListResponse {
 interface MutateResponse {
   success: boolean;
   record?: OnboardingRecord;
+  error?: string;
+}
+
+interface RegularizationListResponse {
+  success: boolean;
+  records?: RegularizationRecord[];
+  error?: string;
+}
+
+interface RegularizationMutateResponse {
+  success: boolean;
+  record?: RegularizationRecord;
+  error?: string;
+}
+
+interface WorkCertificateListResponse {
+  success: boolean;
+  records?: WorkCertificateRecord[];
+  error?: string;
+}
+
+interface WorkCertificateMutateResponse {
+  success: boolean;
+  record?: WorkCertificateRecord;
+  error?: string;
+}
+
+interface LaborContractTerminationListResponse {
+  success: boolean;
+  records?: LaborContractTerminationRecord[];
+  error?: string;
+}
+
+interface LaborContractTerminationMutateResponse {
+  success: boolean;
+  record?: LaborContractTerminationRecord;
   error?: string;
 }
 
@@ -120,6 +166,30 @@ function withNote(answer?: string, note?: string) {
 
 function cloneOnboardingData(data: OnboardingFormData): OnboardingFormData {
   return JSON.parse(JSON.stringify(data)) as OnboardingFormData;
+}
+
+function chinaTodayInput() {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const getPart = (type: string) => parts.find((part) => part.type === type)?.value || '';
+  return `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+}
+
+function createLaborContractTerminationData(): LaborContractTerminationFormData {
+  return {
+    employeeName: '',
+    honorific: '女士/先生',
+    terminationDate: '',
+    reason: '在培训期间，经考察不符合公司用工要求。',
+    procedureDeadline: '',
+    companyName: '东莞山泽新能源有限公司',
+    noticeDate: chinaTodayInput(),
+    remark: '',
+  };
 }
 
 function canOutput(record: OnboardingRecord | null | undefined) {
@@ -194,6 +264,42 @@ export default function PersonnelPage() {
   const [dateEnd, setDateEnd] = useState('');
   const [records, setRecords] = useState<OnboardingRecord[]>([]);
   const [counts, setCounts] = useState<OnboardingCounts>(emptyCounts);
+  const [regularizationRecords, setRegularizationRecords] = useState<RegularizationRecord[]>([]);
+  const [regularizationLoading, setRegularizationLoading] = useState(false);
+  const [regularizationError, setRegularizationError] = useState('');
+  const [regularizationListMode, setRegularizationListMode] = useState<'pending' | 'reviewed' | 'deleted'>('pending');
+  const [regularizationReviewOpen, setRegularizationReviewOpen] = useState(false);
+  const [regularizationReviewTarget, setRegularizationReviewTarget] = useState<RegularizationRecord | null>(null);
+  const [regularizationReviewData, setRegularizationReviewData] = useState<RegularizationFormData | null>(null);
+  const [regularizationReviewing, setRegularizationReviewing] = useState(false);
+  const [regularizationViewOpen, setRegularizationViewOpen] = useState(false);
+  const [regularizationViewTarget, setRegularizationViewTarget] = useState<RegularizationRecord | null>(null);
+  const [regularizationEditOpen, setRegularizationEditOpen] = useState(false);
+  const [regularizationEditTarget, setRegularizationEditTarget] = useState<RegularizationRecord | null>(null);
+  const [regularizationEditData, setRegularizationEditData] = useState<RegularizationFormData | null>(null);
+  const [regularizationSavingEdit, setRegularizationSavingEdit] = useState(false);
+  const [workCertificateRecords, setWorkCertificateRecords] = useState<WorkCertificateRecord[]>([]);
+  const [workCertificateLoading, setWorkCertificateLoading] = useState(false);
+  const [workCertificateError, setWorkCertificateError] = useState('');
+  const [workCertificateListMode, setWorkCertificateListMode] = useState<'pending' | 'reviewed' | 'deleted'>('pending');
+  const [workCertificateReviewOpen, setWorkCertificateReviewOpen] = useState(false);
+  const [workCertificateReviewTarget, setWorkCertificateReviewTarget] = useState<WorkCertificateRecord | null>(null);
+  const [workCertificateReviewData, setWorkCertificateReviewData] = useState<WorkCertificateFormData | null>(null);
+  const [workCertificateReviewing, setWorkCertificateReviewing] = useState(false);
+  const [workCertificateFormMode, setWorkCertificateFormMode] = useState<'review' | 'edit'>('review');
+  const [workCertificateViewOpen, setWorkCertificateViewOpen] = useState(false);
+  const [workCertificateViewTarget, setWorkCertificateViewTarget] = useState<WorkCertificateRecord | null>(null);
+  const [laborTerminationRecords, setLaborTerminationRecords] = useState<LaborContractTerminationRecord[]>([]);
+  const [laborTerminationLoading, setLaborTerminationLoading] = useState(false);
+  const [laborTerminationError, setLaborTerminationError] = useState('');
+  const [laborTerminationListMode, setLaborTerminationListMode] = useState<'active' | 'deleted'>('active');
+  const [laborTerminationFormOpen, setLaborTerminationFormOpen] = useState(false);
+  const [laborTerminationFormMode, setLaborTerminationFormMode] = useState<'create' | 'edit'>('create');
+  const [laborTerminationFormTarget, setLaborTerminationFormTarget] = useState<LaborContractTerminationRecord | null>(null);
+  const [laborTerminationFormData, setLaborTerminationFormData] = useState<LaborContractTerminationFormData>(createLaborContractTerminationData);
+  const [laborTerminationSaving, setLaborTerminationSaving] = useState(false);
+  const [laborTerminationViewOpen, setLaborTerminationViewOpen] = useState(false);
+  const [laborTerminationViewTarget, setLaborTerminationViewTarget] = useState<LaborContractTerminationRecord | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailTab, setDetailTab] = useState('basic');
@@ -249,6 +355,87 @@ export default function PersonnelPage() {
   useEffect(() => {
     void loadRecords();
   }, [loadRecords]);
+
+  const loadRegularizationRecords = useCallback(async () => {
+    setRegularizationLoading(true);
+    setRegularizationError('');
+    try {
+      const params = new URLSearchParams();
+      if (regularizationListMode === 'deleted') params.set('deleted', '1');
+      const response = await fetch(`/api/regularization?${params.toString()}`, { cache: 'no-store' });
+      const result = await response.json().catch(() => ({})) as RegularizationListResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '获取转正申请列表失败');
+      }
+      const nextRecords = result.records || [];
+      setRegularizationRecords(nextRecords.filter((record) => {
+        if (regularizationListMode === 'deleted') return true;
+        if (regularizationListMode === 'pending') return record.status === '待处理';
+        return record.status === '已审核';
+      }));
+    } catch (fetchError) {
+      setRegularizationError(fetchError instanceof Error ? fetchError.message : '获取转正申请列表失败');
+      setRegularizationRecords([]);
+    } finally {
+      setRegularizationLoading(false);
+    }
+  }, [regularizationListMode]);
+
+  useEffect(() => {
+    void loadRegularizationRecords();
+  }, [loadRegularizationRecords]);
+
+  const loadWorkCertificateRecords = useCallback(async () => {
+    setWorkCertificateLoading(true);
+    setWorkCertificateError('');
+    try {
+      const params = new URLSearchParams();
+      if (workCertificateListMode === 'deleted') {
+        params.set('deleted', '1');
+      } else {
+        params.set('status', workCertificateListMode === 'pending' ? '待审核' : '已审核');
+      }
+      const response = await fetch(`/api/work-certificate?${params.toString()}`, { cache: 'no-store' });
+      const result = await response.json().catch(() => ({})) as WorkCertificateListResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '获取工作证明申请失败');
+      }
+      setWorkCertificateRecords(result.records || []);
+    } catch (fetchError) {
+      setWorkCertificateError(fetchError instanceof Error ? fetchError.message : '获取工作证明申请失败');
+      setWorkCertificateRecords([]);
+    } finally {
+      setWorkCertificateLoading(false);
+    }
+  }, [workCertificateListMode]);
+
+  useEffect(() => {
+    void loadWorkCertificateRecords();
+  }, [loadWorkCertificateRecords]);
+
+  const loadLaborTerminationRecords = useCallback(async () => {
+    setLaborTerminationLoading(true);
+    setLaborTerminationError('');
+    try {
+      const params = new URLSearchParams();
+      if (laborTerminationListMode === 'deleted') params.set('deleted', '1');
+      const response = await fetch(`/api/labor-contract-termination?${params.toString()}`, { cache: 'no-store' });
+      const result = await response.json().catch(() => ({})) as LaborContractTerminationListResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '获取解除劳动合同通知书失败');
+      }
+      setLaborTerminationRecords(result.records || []);
+    } catch (fetchError) {
+      setLaborTerminationError(fetchError instanceof Error ? fetchError.message : '获取解除劳动合同通知书失败');
+      setLaborTerminationRecords([]);
+    } finally {
+      setLaborTerminationLoading(false);
+    }
+  }, [laborTerminationListMode]);
+
+  useEffect(() => {
+    void loadLaborTerminationRecords();
+  }, [loadLaborTerminationRecords]);
 
   const visibleRecords = useMemo(() => {
     return records.filter((record) => {
@@ -468,6 +655,293 @@ export default function PersonnelPage() {
     window.open(`/api/onboarding/${record.id}/print`, '_blank', 'noopener,noreferrer');
   };
 
+  const openRegularizationView = (record: RegularizationRecord) => {
+    setRegularizationViewTarget(record);
+    setRegularizationViewOpen(true);
+  };
+
+  const openRegularizationReview = (record: RegularizationRecord) => {
+    setRegularizationReviewTarget(record);
+    setRegularizationReviewData(JSON.parse(JSON.stringify(record.data)) as RegularizationFormData);
+    setRegularizationReviewOpen(true);
+  };
+
+  const openRegularizationEdit = (record: RegularizationRecord) => {
+    setRegularizationEditTarget(record);
+    setRegularizationEditData(JSON.parse(JSON.stringify(record.data)) as RegularizationFormData);
+    setRegularizationEditOpen(true);
+  };
+
+  const updateRegularizationEditField = <K extends keyof RegularizationFormData>(field: K, value: RegularizationFormData[K]) => {
+    setRegularizationEditData((current) => current ? { ...current, [field]: value } : current);
+  };
+
+  const updateRegularizationReviewField = <K extends keyof RegularizationFormData>(field: K, value: RegularizationFormData[K]) => {
+    setRegularizationReviewData((current) => current ? { ...current, [field]: value } : current);
+  };
+
+  const submitRegularizationReview = async () => {
+    if (!regularizationReviewTarget || !regularizationReviewData) return;
+
+    setRegularizationReviewing(true);
+    try {
+      const response = await fetch(`/api/regularization/${regularizationReviewTarget.id}/review`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: regularizationReviewData }),
+      });
+      const result = await response.json().catch(() => ({})) as RegularizationMutateResponse;
+      if (!response.ok || !result.success || !result.record) {
+        throw new Error(result.error || '审核转正申请失败');
+      }
+      setRegularizationReviewOpen(false);
+      setRegularizationReviewTarget(null);
+      setRegularizationReviewData(null);
+      await loadRegularizationRecords();
+    } catch (reviewError) {
+      alert(reviewError instanceof Error ? reviewError.message : '审核转正申请失败');
+    } finally {
+      setRegularizationReviewing(false);
+    }
+  };
+
+  const submitRegularizationEdit = async () => {
+    if (!regularizationEditTarget || !regularizationEditData) return;
+    setRegularizationSavingEdit(true);
+    try {
+      const response = await fetch(`/api/regularization/${regularizationEditTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: regularizationEditData }),
+      });
+      const result = await response.json().catch(() => ({})) as RegularizationMutateResponse;
+      if (!response.ok || !result.success || !result.record) {
+        throw new Error(result.error || '修改转正申请失败');
+      }
+      setRegularizationEditOpen(false);
+      setRegularizationEditTarget(null);
+      setRegularizationEditData(null);
+      await loadRegularizationRecords();
+    } catch (editError) {
+      alert(editError instanceof Error ? editError.message : '修改转正申请失败');
+    } finally {
+      setRegularizationSavingEdit(false);
+    }
+  };
+
+  const deleteRegularizationRecord = async (record: RegularizationRecord) => {
+    if (!confirm(`确定删除 ${record.applicantName} 的转正申请吗？删除后一周内可恢复，超过一周会完全删除。`)) return;
+    try {
+      const response = await fetch(`/api/regularization/${record.id}`, { method: 'DELETE' });
+      const result = await response.json().catch(() => ({})) as RegularizationMutateResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '删除转正申请失败');
+      }
+      await loadRegularizationRecords();
+    } catch (deleteError) {
+      alert(deleteError instanceof Error ? deleteError.message : '删除转正申请失败');
+    }
+  };
+
+  const restoreRegularizationRecord = async (record: RegularizationRecord) => {
+    try {
+      const response = await fetch(`/api/regularization/${record.id}/restore`, { method: 'PATCH' });
+      const result = await response.json().catch(() => ({})) as RegularizationMutateResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '恢复转正申请失败');
+      }
+      await loadRegularizationRecords();
+    } catch (restoreError) {
+      alert(restoreError instanceof Error ? restoreError.message : '恢复转正申请失败');
+    }
+  };
+
+  const exportRegularizationRecord = (record: RegularizationRecord) => {
+    if (record.status !== '已审核') {
+      alert('请先审核转正申请，再导出表格');
+      return;
+    }
+    window.open(`/api/regularization/${record.id}/export`, '_blank', 'noopener,noreferrer');
+    setTimeout(() => void loadRegularizationRecords(), 800);
+  };
+
+  const openWorkCertificateReview = (record: WorkCertificateRecord) => {
+    setWorkCertificateFormMode('review');
+    setWorkCertificateReviewTarget(record);
+    setWorkCertificateReviewData(JSON.parse(JSON.stringify(record.data)) as WorkCertificateFormData);
+    setWorkCertificateReviewOpen(true);
+  };
+
+  const openWorkCertificateEdit = (record: WorkCertificateRecord) => {
+    setWorkCertificateFormMode('edit');
+    setWorkCertificateReviewTarget(record);
+    setWorkCertificateReviewData(JSON.parse(JSON.stringify(record.data)) as WorkCertificateFormData);
+    setWorkCertificateReviewOpen(true);
+  };
+
+  const updateWorkCertificateReviewField = <K extends keyof WorkCertificateFormData>(field: K, value: WorkCertificateFormData[K]) => {
+    setWorkCertificateReviewData((current) => current ? { ...current, [field]: value } : current);
+  };
+
+  const submitWorkCertificateReview = async () => {
+    if (!workCertificateReviewTarget || !workCertificateReviewData) return;
+    setWorkCertificateReviewing(true);
+    try {
+      const response = await fetch(
+        workCertificateFormMode === 'review'
+          ? `/api/work-certificate/${workCertificateReviewTarget.id}/review`
+          : `/api/work-certificate/${workCertificateReviewTarget.id}`,
+        {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: workCertificateReviewData }),
+        },
+      );
+      const result = await response.json().catch(() => ({})) as WorkCertificateMutateResponse;
+      if (!response.ok || !result.success || !result.record) {
+        throw new Error(result.error || (workCertificateFormMode === 'review' ? '审核工作证明失败' : '修改工作证明失败'));
+      }
+      setWorkCertificateReviewOpen(false);
+      setWorkCertificateReviewTarget(null);
+      setWorkCertificateReviewData(null);
+      if (workCertificateFormMode === 'review') {
+        setWorkCertificateListMode('reviewed');
+      }
+      await loadWorkCertificateRecords();
+    } catch (reviewError) {
+      alert(reviewError instanceof Error ? reviewError.message : (workCertificateFormMode === 'review' ? '审核工作证明失败' : '修改工作证明失败'));
+    } finally {
+      setWorkCertificateReviewing(false);
+    }
+  };
+
+  const deleteWorkCertificateRecord = async (record: WorkCertificateRecord) => {
+    if (!confirm(`确定删除 ${record.name} 的工作证明申请吗？删除后一周内可恢复，超过一周会完全删除。`)) return;
+    try {
+      const response = await fetch(`/api/work-certificate/${record.id}`, { method: 'DELETE' });
+      const result = await response.json().catch(() => ({})) as WorkCertificateMutateResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '删除工作证明申请失败');
+      }
+      await loadWorkCertificateRecords();
+    } catch (deleteError) {
+      alert(deleteError instanceof Error ? deleteError.message : '删除工作证明申请失败');
+    }
+  };
+
+  const restoreWorkCertificateRecord = async (record: WorkCertificateRecord) => {
+    try {
+      const response = await fetch(`/api/work-certificate/${record.id}/restore`, { method: 'PATCH' });
+      const result = await response.json().catch(() => ({})) as WorkCertificateMutateResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '恢复工作证明申请失败');
+      }
+      await loadWorkCertificateRecords();
+    } catch (restoreError) {
+      alert(restoreError instanceof Error ? restoreError.message : '恢复工作证明申请失败');
+    }
+  };
+
+  const exportWorkCertificateRecord = (record: WorkCertificateRecord) => {
+    if (record.status !== '已审核') {
+      alert('请先审核工作证明申请，再导出');
+      return;
+    }
+    window.open(`/api/work-certificate/${record.id}/export`, '_blank', 'noopener,noreferrer');
+  };
+
+  const openWorkCertificateView = (record: WorkCertificateRecord) => {
+    setWorkCertificateViewTarget(record);
+    setWorkCertificateViewOpen(true);
+  };
+
+  const openLaborTerminationCreate = () => {
+    setLaborTerminationFormMode('create');
+    setLaborTerminationFormTarget(null);
+    setLaborTerminationFormData(createLaborContractTerminationData());
+    setLaborTerminationFormOpen(true);
+  };
+
+  const openLaborTerminationEdit = (record: LaborContractTerminationRecord) => {
+    setLaborTerminationFormMode('edit');
+    setLaborTerminationFormTarget(record);
+    setLaborTerminationFormData(JSON.parse(JSON.stringify(record.data)) as LaborContractTerminationFormData);
+    setLaborTerminationFormOpen(true);
+  };
+
+  const openLaborTerminationView = (record: LaborContractTerminationRecord) => {
+    setLaborTerminationViewTarget(record);
+    setLaborTerminationViewOpen(true);
+  };
+
+  const updateLaborTerminationField = <K extends keyof LaborContractTerminationFormData>(field: K, value: LaborContractTerminationFormData[K]) => {
+    setLaborTerminationFormData((current) => ({ ...current, [field]: value }));
+  };
+
+  const submitLaborTerminationForm = async () => {
+    setLaborTerminationSaving(true);
+    try {
+      const response = await fetch(
+        laborTerminationFormMode === 'create'
+          ? '/api/labor-contract-termination'
+          : `/api/labor-contract-termination/${laborTerminationFormTarget?.id}`,
+        {
+          method: laborTerminationFormMode === 'create' ? 'POST' : 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: laborTerminationFormData }),
+        },
+      );
+      const result = await response.json().catch(() => ({})) as LaborContractTerminationMutateResponse;
+      if (!response.ok || !result.success || !result.record) {
+        throw new Error(result.error || (laborTerminationFormMode === 'create' ? '保存解除劳动合同通知书失败' : '修改解除劳动合同通知书失败'));
+      }
+      setLaborTerminationFormOpen(false);
+      setLaborTerminationFormTarget(null);
+      await loadLaborTerminationRecords();
+    } catch (saveError) {
+      alert(saveError instanceof Error ? saveError.message : '保存解除劳动合同通知书失败');
+    } finally {
+      setLaborTerminationSaving(false);
+    }
+  };
+
+  const deleteLaborTerminationRecord = async (record: LaborContractTerminationRecord) => {
+    if (!confirm(`确定删除 ${record.employeeName} 的解除劳动合同通知书吗？删除后一周内可恢复，超过一周会完全删除。`)) return;
+    try {
+      const response = await fetch(`/api/labor-contract-termination/${record.id}`, { method: 'DELETE' });
+      const result = await response.json().catch(() => ({})) as LaborContractTerminationMutateResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '删除解除劳动合同通知书失败');
+      }
+      await loadLaborTerminationRecords();
+    } catch (deleteError) {
+      alert(deleteError instanceof Error ? deleteError.message : '删除解除劳动合同通知书失败');
+    }
+  };
+
+  const restoreLaborTerminationRecord = async (record: LaborContractTerminationRecord) => {
+    try {
+      const response = await fetch(`/api/labor-contract-termination/${record.id}/restore`, { method: 'PATCH' });
+      const result = await response.json().catch(() => ({})) as LaborContractTerminationMutateResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '恢复解除劳动合同通知书失败');
+      }
+      await loadLaborTerminationRecords();
+    } catch (restoreError) {
+      alert(restoreError instanceof Error ? restoreError.message : '恢复解除劳动合同通知书失败');
+    }
+  };
+
+  const exportLaborTerminationRecord = (record: LaborContractTerminationRecord) => {
+    window.open(`/api/labor-contract-termination/${record.id}/export`, '_blank', 'noopener,noreferrer');
+    setTimeout(() => void loadLaborTerminationRecords(), 800);
+  };
+
+  const printLaborTerminationRecord = (record: LaborContractTerminationRecord) => {
+    window.open(`/api/labor-contract-termination/${record.id}/print`, '_blank', 'noopener,noreferrer');
+    setTimeout(() => void loadLaborTerminationRecords(), 800);
+  };
+
   return (
     <div className="min-h-[calc(100vh-3.5rem)] bg-slate-50 p-4 text-slate-950 md:p-6">
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -477,13 +951,83 @@ export default function PersonnelPage() {
           </div>
           <h1 className="mt-1 text-xl font-semibold tracking-normal text-slate-950">人事管理</h1>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild className="bg-blue-600 hover:bg-blue-700">
-            <Link href="/onboarding" target="_blank">
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          <div className="group relative z-30">
+            <Button className="bg-blue-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md">
               <Plus className="h-4 w-4" />
-              员工入职
-            </Link>
-          </Button>
+              人事办理
+              <ChevronDown className="h-4 w-4 transition-transform duration-200 group-hover:rotate-180 group-focus-within:rotate-180" />
+            </Button>
+            <div className="pointer-events-none absolute right-0 top-full w-[620px] max-w-[calc(100vw-2rem)] origin-top-right translate-y-1 pt-2 opacity-0 transition-all duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 group-focus-within:opacity-100">
+              <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <Link
+                    href="/onboarding"
+                    target="_blank"
+                    className="flex items-center gap-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-100 hover:shadow-sm"
+                  >
+                    <Plus className="h-4 w-4" />
+                    员工入职
+                  </Link>
+                  <Link
+                    href="/regularization"
+                    target="_blank"
+                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
+                  >
+                    <FileCheck2 className="h-4 w-4" />
+                    转正申请
+                  </Link>
+                  <Link
+                    href="/work-certificate"
+                    target="_blank"
+                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
+                  >
+                    <FileCheck2 className="h-4 w-4" />
+                    工作证明
+                  </Link>
+                  <Link
+                    href="/resignation"
+                    target="_blank"
+                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
+                  >
+                    <FileCheck2 className="h-4 w-4" />
+                    离职申请
+                  </Link>
+                  <Link
+                    href="/resignation-certificate"
+                    target="_blank"
+                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
+                  >
+                    <FileCheck2 className="h-4 w-4" />
+                    离职证明
+                  </Link>
+                  <Link
+                    href="#social-security-management"
+                    className="flex items-center gap-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-100 hover:shadow-sm"
+                  >
+                    <FileCheck2 className="h-4 w-4" />
+                    社保管理
+                  </Link>
+                  <Link
+                    href="/social-security?type=no_purchase"
+                    target="_blank"
+                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
+                  >
+                    <FileCheck2 className="h-4 w-4" />
+                    不购买社保
+                  </Link>
+                  <Link
+                    href="/social-security?type=waiver"
+                    target="_blank"
+                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
+                  >
+                    <FileCheck2 className="h-4 w-4" />
+                    放弃社保
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
           <Button
             variant="outline"
             disabled={!canOutput(selectedRecord)}
@@ -607,25 +1151,16 @@ export default function PersonnelPage() {
                     <TableHead className="min-w-72">操作</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {loading && (
-                    <TableRow>
-                      <TableCell colSpan={10} className="h-28 text-center text-sm text-slate-500">
-                        <span className="inline-flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          正在加载入职登记...
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {!loading && visibleRecords.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={10} className="h-28 text-center text-sm text-slate-500">
-                        暂无{activeStatus}记录
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {!loading && visibleRecords.map((record, index) => (
+                <YearMonthGroupedTableBody
+                  records={visibleRecords}
+                  loading={loading}
+                  colSpan={10}
+                  loadingText="正在加载入职登记..."
+                  emptyText={`暂无${activeStatus}记录`}
+                  getDate={(record) => record.createdAt}
+                  renderRow={(record) => {
+                    const index = visibleRecords.findIndex((item) => item.id === record.id);
+                    return (
                     <TableRow
                       key={record.id}
                       className={cn(selectedRecord?.id === record.id && detailVisible && 'bg-blue-50/60')}
@@ -673,8 +1208,9 @@ export default function PersonnelPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
+                    );
+                  }}
+                />
               </Table>
             </div>
             <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
@@ -902,6 +1438,999 @@ export default function PersonnelPage() {
           </Button>
         </div>
       </div>
+
+      <SocialSecurityAdminSection />
+
+      <div className="mt-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <FileCheck2 className="h-4 w-4 text-blue-600" />
+              转正申请
+            </div>
+            <p className="mt-1 text-sm text-slate-500">移动端提交后在这里查看，导出时使用你提供的员工转正申请表模板。</p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant={regularizationListMode === 'pending' ? 'default' : 'outline'}
+              className={regularizationListMode === 'pending' ? 'bg-slate-950 hover:bg-slate-800' : ''}
+              onClick={() => setRegularizationListMode('pending')}
+            >
+              待审核
+            </Button>
+            <Button
+              variant={regularizationListMode === 'reviewed' ? 'default' : 'outline'}
+              className={regularizationListMode === 'reviewed' ? 'bg-slate-950 hover:bg-slate-800' : ''}
+              onClick={() => setRegularizationListMode('reviewed')}
+            >
+              已审核
+            </Button>
+            <Button
+              variant={regularizationListMode === 'deleted' ? 'default' : 'outline'}
+              className={regularizationListMode === 'deleted' ? 'bg-slate-950 hover:bg-slate-800' : ''}
+              onClick={() => setRegularizationListMode('deleted')}
+            >
+              已删除
+            </Button>
+            <Button asChild variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
+              <Link href="/regularization" target="_blank">打开移动端入口</Link>
+            </Button>
+            <Button variant="outline" onClick={() => void loadRegularizationRecords()} disabled={regularizationLoading}>
+              {regularizationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+              刷新
+            </Button>
+          </div>
+        </div>
+
+        {regularizationError && (
+          <div className="mt-3 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {regularizationError}
+          </div>
+        )}
+
+        <div className="mt-4 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>申请人</TableHead>
+                <TableHead>部门</TableHead>
+                <TableHead>岗位</TableHead>
+                <TableHead>入职日期</TableHead>
+                <TableHead>转正日期</TableHead>
+                <TableHead>状态</TableHead>
+                {regularizationListMode === 'deleted' && <TableHead>恢复截止</TableHead>}
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <YearMonthGroupedTableBody
+              records={regularizationRecords}
+              loading={regularizationLoading}
+              colSpan={regularizationListMode === 'deleted' ? 8 : 7}
+              loadingText="正在加载转正申请..."
+              emptyText={regularizationListMode === 'deleted' ? '暂无已删除转正申请记录' : regularizationListMode === 'pending' ? '暂无待审核转正申请记录' : '暂无已审核转正申请记录'}
+              getDate={(record) => record.createdAt}
+              renderRow={(record) => (
+                <TableRow key={record.id}>
+                  <TableCell className="font-medium text-slate-900">{display(record.applicantName)}</TableCell>
+                  <TableCell>{display(record.department)}</TableCell>
+                  <TableCell>{display(record.position)}</TableCell>
+                  <TableCell>{formatDate(record.hireDate)}</TableCell>
+                  <TableCell>{formatDate(record.regularizationDate)}</TableCell>
+                  <TableCell>{record.status}</TableCell>
+                  {regularizationListMode === 'deleted' && <TableCell>{formatDateTime(record.restoreUntil)}</TableCell>}
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => openRegularizationView(record)}>
+                      <Eye className="h-4 w-4" />
+                      查看
+                    </Button>
+                    {regularizationListMode === 'deleted' ? (
+                      <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => restoreRegularizationRecord(record)}>
+                        <RotateCcw className="h-4 w-4" />
+                        恢复
+                      </Button>
+                    ) : (
+                      <>
+                    <Button variant="outline" size="sm" onClick={() => openRegularizationEdit(record)}>
+                      <Pencil className="h-4 w-4" />
+                      修改
+                    </Button>
+                    {record.status === '已审核' ? (
+                      <Button variant="outline" size="sm" onClick={() => exportRegularizationRecord(record)}>
+                        <Download className="h-4 w-4" />
+                        导出
+                      </Button>
+                    ) : (
+                      <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => openRegularizationReview(record)}>
+                        <FileCheck2 className="h-4 w-4" />
+                        审核
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" className="border-red-200 text-red-600 hover:bg-red-50" onClick={() => deleteRegularizationRecord(record)}>
+                      <Trash2 className="h-4 w-4" />
+                      删除
+                    </Button>
+                      </>
+                    )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+            />
+          </Table>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <FileCheck2 className="h-4 w-4 text-blue-600" />
+              工作证明申请
+            </div>
+            <p className="mt-1 text-sm text-slate-500">员工移动端只填写个人信息，后台审核时填写部门、岗位、入职日期和证明日期。</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={workCertificateListMode === 'pending' ? 'default' : 'outline'}
+              className={workCertificateListMode === 'pending' ? 'bg-slate-950 hover:bg-slate-800' : ''}
+              onClick={() => setWorkCertificateListMode('pending')}
+            >
+              待审核
+            </Button>
+            <Button
+              variant={workCertificateListMode === 'reviewed' ? 'default' : 'outline'}
+              className={workCertificateListMode === 'reviewed' ? 'bg-slate-950 hover:bg-slate-800' : ''}
+              onClick={() => setWorkCertificateListMode('reviewed')}
+            >
+              已审核
+            </Button>
+            <Button
+              variant={workCertificateListMode === 'deleted' ? 'default' : 'outline'}
+              className={workCertificateListMode === 'deleted' ? 'bg-slate-950 hover:bg-slate-800' : ''}
+              onClick={() => setWorkCertificateListMode('deleted')}
+            >
+              已删除
+            </Button>
+            <Button asChild variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
+              <Link href="/work-certificate" target="_blank">打开移动端入口</Link>
+            </Button>
+            <Button variant="outline" onClick={() => void loadWorkCertificateRecords()} disabled={workCertificateLoading}>
+              {workCertificateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+              刷新
+            </Button>
+          </div>
+        </div>
+
+        {workCertificateError && (
+          <div className="mt-3 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {workCertificateError}
+          </div>
+        )}
+
+        <div className="mt-4 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>姓名</TableHead>
+                <TableHead>性别</TableHead>
+                <TableHead>身份证</TableHead>
+                <TableHead>部门</TableHead>
+                <TableHead>岗位</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <YearMonthGroupedTableBody
+              records={workCertificateRecords}
+              loading={workCertificateLoading}
+              colSpan={7}
+              loadingText="正在加载工作证明申请..."
+              emptyText={workCertificateListMode === 'pending'
+                ? '暂无待审核工作证明申请'
+                : workCertificateListMode === 'reviewed'
+                  ? '暂无已审核工作证明申请'
+                  : '暂无已删除工作证明申请'}
+              getDate={(record) => record.createdAt}
+              renderRow={(record) => (
+                <TableRow key={record.id}>
+                  <TableCell className="font-medium text-slate-900">{display(record.name)}</TableCell>
+                  <TableCell>{display(record.gender)}</TableCell>
+                  <TableCell>{display(record.idCard)}</TableCell>
+                  <TableCell>{display(record.department)}</TableCell>
+                  <TableCell>{display(record.position)}</TableCell>
+                  <TableCell>{record.deletedAt ? '已删除' : record.status}</TableCell>
+                  <TableCell className="text-right">
+                    {workCertificateListMode === 'deleted' ? (
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <span className="self-center text-xs text-slate-500">保留至 {record.restoreUntil || '-'}</span>
+                        <Button variant="outline" size="sm" onClick={() => openWorkCertificateView(record)}>
+                          <Eye className="h-4 w-4" />
+                          查看
+                        </Button>
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => restoreWorkCertificateRecord(record)}>
+                          <RotateCcw className="h-4 w-4" />
+                          恢复
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openWorkCertificateView(record)}>
+                          <Eye className="h-4 w-4" />
+                          查看
+                        </Button>
+                        {record.status === '已审核' ? (
+                          <Button variant="outline" size="sm" onClick={() => exportWorkCertificateRecord(record)}>
+                            <Download className="h-4 w-4" />
+                            导出
+                          </Button>
+                        ) : (
+                          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => openWorkCertificateReview(record)}>
+                            <FileCheck2 className="h-4 w-4" />
+                            审核
+                          </Button>
+                        )}
+                        <Button variant="outline" size="sm" onClick={() => openWorkCertificateEdit(record)}>
+                          <Pencil className="h-4 w-4" />
+                          修改
+                        </Button>
+                        <Button variant="outline" size="sm" className="border-red-200 text-red-600 hover:bg-red-50" onClick={() => deleteWorkCertificateRecord(record)}>
+                          <Trash2 className="h-4 w-4" />
+                          删除
+                        </Button>
+                      </div>
+                    )}
+                  </TableCell>
+                </TableRow>
+              )}
+            />
+          </Table>
+        </div>
+      </div>
+
+      <ResignationAdminSection />
+
+      <ResignationCertificateAdminSection />
+
+      <div className="mt-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <ClipboardCheck className="h-4 w-4 text-red-600" />
+              解除劳动合同通知书
+            </div>
+            <p className="mt-1 text-sm text-slate-500">管理员填写并保存记录，导出和打印都会记录时间；员工确认书部分保持模板原样。</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={laborTerminationListMode === 'active' ? 'default' : 'outline'}
+              className={laborTerminationListMode === 'active' ? 'bg-slate-950 hover:bg-slate-800' : ''}
+              onClick={() => setLaborTerminationListMode('active')}
+            >
+              在用记录
+            </Button>
+            <Button
+              variant={laborTerminationListMode === 'deleted' ? 'default' : 'outline'}
+              className={laborTerminationListMode === 'deleted' ? 'bg-slate-950 hover:bg-slate-800' : ''}
+              onClick={() => setLaborTerminationListMode('deleted')}
+            >
+              已删除
+            </Button>
+            <Button className="bg-red-600 hover:bg-red-700" onClick={openLaborTerminationCreate}>
+              <Plus className="h-4 w-4" />
+              新增通知书
+            </Button>
+            <Button variant="outline" onClick={() => void loadLaborTerminationRecords()} disabled={laborTerminationLoading}>
+              {laborTerminationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+              刷新
+            </Button>
+          </div>
+        </div>
+
+        {laborTerminationError && (
+          <div className="mt-3 rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {laborTerminationError}
+          </div>
+        )}
+
+        <div className="mt-4 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>员工姓名</TableHead>
+                <TableHead>称谓</TableHead>
+                <TableHead>解除日期</TableHead>
+                <TableHead>办理截止</TableHead>
+                <TableHead>通知日期</TableHead>
+                <TableHead>导出/打印</TableHead>
+                {laborTerminationListMode === 'deleted' && <TableHead>恢复截止</TableHead>}
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <YearMonthGroupedTableBody
+              records={laborTerminationRecords}
+              loading={laborTerminationLoading}
+              colSpan={laborTerminationListMode === 'deleted' ? 8 : 7}
+              loadingText="正在加载解除劳动合同通知书..."
+              emptyText={laborTerminationListMode === 'deleted' ? '暂无已删除解除劳动合同通知书' : '暂无解除劳动合同通知书记录'}
+              getDate={(record) => record.createdAt}
+              renderRow={(record) => (
+                <TableRow key={record.id}>
+                  <TableCell className="font-medium text-slate-900">{display(record.employeeName)}</TableCell>
+                  <TableCell>{display(record.honorific)}</TableCell>
+                  <TableCell>{formatDate(record.terminationDate)}</TableCell>
+                  <TableCell>{formatDate(record.procedureDeadline)}</TableCell>
+                  <TableCell>{formatDate(record.noticeDate)}</TableCell>
+                  <TableCell className="text-xs text-slate-600">
+                    导出：{formatDateTime(record.exportedAt)}
+                    <br />
+                    打印：{formatDateTime(record.printedAt)}
+                  </TableCell>
+                  {laborTerminationListMode === 'deleted' && <TableCell>{formatDateTime(record.restoreUntil)}</TableCell>}
+                  <TableCell className="text-right">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openLaborTerminationView(record)}>
+                        <Eye className="h-4 w-4" />
+                        查看
+                      </Button>
+                      {laborTerminationListMode === 'deleted' ? (
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => restoreLaborTerminationRecord(record)}>
+                          <RotateCcw className="h-4 w-4" />
+                          恢复
+                        </Button>
+                      ) : (
+                        <>
+                          <Button variant="outline" size="sm" onClick={() => openLaborTerminationEdit(record)}>
+                            <Pencil className="h-4 w-4" />
+                            修改
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => exportLaborTerminationRecord(record)}>
+                            <Download className="h-4 w-4" />
+                            导出
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => printLaborTerminationRecord(record)}>
+                            <Printer className="h-4 w-4" />
+                            打印
+                          </Button>
+                          <Button variant="outline" size="sm" className="border-red-200 text-red-600 hover:bg-red-50" onClick={() => deleteLaborTerminationRecord(record)}>
+                            <Trash2 className="h-4 w-4" />
+                            删除
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+            />
+          </Table>
+        </div>
+      </div>
+
+      <Dialog open={workCertificateViewOpen} onOpenChange={setWorkCertificateViewOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>查看工作证明申请</DialogTitle>
+            <DialogDescription>查看员工提交信息、后台审核内容和删除恢复时间。</DialogDescription>
+          </DialogHeader>
+          {workCertificateViewTarget && (
+            <div className="space-y-4">
+              <DetailGrid pairs={[
+                ['姓名', workCertificateViewTarget.name],
+                ['性别', workCertificateViewTarget.gender],
+                ['身份证', workCertificateViewTarget.idCard],
+                ['电话', workCertificateViewTarget.phone],
+                ['部门', workCertificateViewTarget.department],
+                ['岗位', workCertificateViewTarget.position],
+                ['入职日期', formatDate(workCertificateViewTarget.hireDate)],
+                ['用途', workCertificateViewTarget.purpose],
+                ['状态', workCertificateViewTarget.deletedAt ? '已删除' : workCertificateViewTarget.status],
+                ['审核人', workCertificateViewTarget.reviewerName],
+                ['审核时间', formatDateTime(workCertificateViewTarget.reviewedAt)],
+                ['删除时间', formatDateTime(workCertificateViewTarget.deletedAt)],
+                ['恢复截止', formatDateTime(workCertificateViewTarget.restoreUntil)],
+              ]} />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWorkCertificateViewOpen(false)}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={laborTerminationFormOpen} onOpenChange={setLaborTerminationFormOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{laborTerminationFormMode === 'create' ? '新增解除劳动合同通知书' : '修改解除劳动合同通知书'}</DialogTitle>
+            <DialogDescription>这里填写通知书上半部分内容；底部员工确认书和签名横线会保持模板原样。</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">员工姓名</label>
+              <Input value={laborTerminationFormData.employeeName} onChange={(event) => updateLaborTerminationField('employeeName', event.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">称谓</label>
+              <Select value={laborTerminationFormData.honorific} onValueChange={(value) => updateLaborTerminationField('honorific', value as LaborContractTerminationFormData['honorific'])}>
+                <SelectTrigger>
+                  <SelectValue placeholder="请选择称谓" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="女士/先生">女士/先生</SelectItem>
+                  <SelectItem value="女士">女士</SelectItem>
+                  <SelectItem value="先生">先生</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">解除日期</label>
+              <Input type="date" value={laborTerminationFormData.terminationDate} onChange={(event) => updateLaborTerminationField('terminationDate', event.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">离职手续办理截止日期</label>
+              <Input type="date" value={laborTerminationFormData.procedureDeadline} onChange={(event) => updateLaborTerminationField('procedureDeadline', event.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">公司名称</label>
+              <Input value={laborTerminationFormData.companyName} onChange={(event) => updateLaborTerminationField('companyName', event.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">通知日期</label>
+              <Input type="date" value={laborTerminationFormData.noticeDate} onChange={(event) => updateLaborTerminationField('noticeDate', event.target.value)} />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="text-sm font-medium text-slate-700">解除原因</label>
+              <Textarea value={laborTerminationFormData.reason} onChange={(event) => updateLaborTerminationField('reason', event.target.value)} rows={3} />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="text-sm font-medium text-slate-700">备注</label>
+              <Textarea value={laborTerminationFormData.remark} onChange={(event) => updateLaborTerminationField('remark', event.target.value)} rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLaborTerminationFormOpen(false)} disabled={laborTerminationSaving}>取消</Button>
+            <Button className="bg-red-600 hover:bg-red-700" onClick={submitLaborTerminationForm} disabled={laborTerminationSaving}>
+              {laborTerminationSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {laborTerminationFormMode === 'create' ? '保存记录' : '保存修改'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={laborTerminationViewOpen} onOpenChange={setLaborTerminationViewOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>查看解除劳动合同通知书</DialogTitle>
+            <DialogDescription>查看已保存的通知书字段和导出打印记录。</DialogDescription>
+          </DialogHeader>
+          {laborTerminationViewTarget && (
+            <div className="space-y-4">
+              <DetailGrid pairs={[
+                ['员工姓名', laborTerminationViewTarget.employeeName],
+                ['称谓', laborTerminationViewTarget.honorific],
+                ['解除日期', formatDate(laborTerminationViewTarget.terminationDate)],
+                ['办理截止', formatDate(laborTerminationViewTarget.procedureDeadline)],
+                ['通知日期', formatDate(laborTerminationViewTarget.noticeDate)],
+                ['公司名称', laborTerminationViewTarget.companyName],
+                ['解除原因', laborTerminationViewTarget.reason],
+                ['创建人', laborTerminationViewTarget.createdByName],
+                ['创建时间', formatDateTime(laborTerminationViewTarget.createdAt)],
+                ['导出时间', formatDateTime(laborTerminationViewTarget.exportedAt)],
+                ['打印时间', formatDateTime(laborTerminationViewTarget.printedAt)],
+                ['删除时间', formatDateTime(laborTerminationViewTarget.deletedAt)],
+                ['恢复截止', formatDateTime(laborTerminationViewTarget.restoreUntil)],
+              ]} />
+              {laborTerminationViewTarget.data.remark && (
+                <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">
+                  <div className="mb-1 font-medium text-slate-900">备注</div>
+                  {laborTerminationViewTarget.data.remark}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLaborTerminationViewOpen(false)}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={workCertificateReviewOpen} onOpenChange={setWorkCertificateReviewOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{workCertificateFormMode === 'review' ? '审核工作证明申请' : '修改工作证明申请'}</DialogTitle>
+            <DialogDescription>
+              {workCertificateFormMode === 'review'
+                ? '员工只填写个人信息，这里由管理员填写证明中的部门、岗位、入职日期和落款信息。'
+                : '可修改员工个人信息和证明内容，保存后会同步到导出的工作证明。'}
+            </DialogDescription>
+          </DialogHeader>
+          {workCertificateReviewTarget && workCertificateReviewData && (
+            <div className="space-y-5">
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                {workCertificateReviewTarget.name} / {display(workCertificateReviewTarget.gender)} / {display(workCertificateReviewTarget.idCard)}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">姓名</label>
+                  <Input value={workCertificateReviewData.name} onChange={(event) => updateWorkCertificateReviewField('name', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">性别</label>
+                  <Select value={workCertificateReviewData.gender || undefined} onValueChange={(value) => updateWorkCertificateReviewField('gender', value as WorkCertificateFormData['gender'])}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="请选择性别" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="男">男</SelectItem>
+                      <SelectItem value="女">女</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">身份证号</label>
+                  <Input value={workCertificateReviewData.idCard} onChange={(event) => updateWorkCertificateReviewField('idCard', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">联系电话</label>
+                  <Input value={workCertificateReviewData.phone} onChange={(event) => updateWorkCertificateReviewField('phone', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">部门</label>
+                  <Input value={workCertificateReviewData.department} onChange={(event) => updateWorkCertificateReviewField('department', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">岗位</label>
+                  <Input value={workCertificateReviewData.position} onChange={(event) => updateWorkCertificateReviewField('position', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">入职日期</label>
+                  <Input type="date" value={workCertificateReviewData.hireDate} onChange={(event) => updateWorkCertificateReviewField('hireDate', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">证明日期</label>
+                  <Input type="date" value={workCertificateReviewData.issueDate} onChange={(event) => updateWorkCertificateReviewField('issueDate', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">用途</label>
+                  <Input value={workCertificateReviewData.purpose} onChange={(event) => updateWorkCertificateReviewField('purpose', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">公司名称</label>
+                  <Input value={workCertificateReviewData.companyName} onChange={(event) => updateWorkCertificateReviewField('companyName', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">审核人</label>
+                  <Input value={workCertificateReviewData.reviewerName} onChange={(event) => updateWorkCertificateReviewField('reviewerName', event.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWorkCertificateReviewOpen(false)} disabled={workCertificateReviewing}>
+              取消
+            </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={submitWorkCertificateReview} disabled={workCertificateReviewing}>
+              {workCertificateReviewing && <Loader2 className="h-4 w-4 animate-spin" />}
+              {workCertificateFormMode === 'review' ? '完成审核' : '保存修改'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={regularizationViewOpen} onOpenChange={setRegularizationViewOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>查看转正申请</DialogTitle>
+            <DialogDescription>
+              查看员工移动端提交内容和后台审核意见。
+            </DialogDescription>
+          </DialogHeader>
+          {regularizationViewTarget && (
+            <div className="space-y-5">
+              <DetailSection title="员工填写">
+                <DetailGrid
+                  pairs={[
+                    ['申请人', regularizationViewTarget.applicantName],
+                    ['部门', regularizationViewTarget.department],
+                    ['岗位', regularizationViewTarget.position],
+                    ['填表日期', formatDate(regularizationViewTarget.data.fillDate)],
+                    ['入职日期', formatDate(regularizationViewTarget.hireDate)],
+                    ['转正日期', formatDate(regularizationViewTarget.regularizationDate)],
+                    ['申请日期', formatDate(regularizationViewTarget.data.applicantDate)],
+                    ['状态', regularizationViewTarget.status],
+                  ]}
+                />
+                <div className="mt-4">
+                  <p className="mb-2 text-sm font-medium text-slate-700">试用期工作小结</p>
+                  <div className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+                    {regularizationViewTarget.data.workSummary || '-'}
+                  </div>
+                </div>
+                {regularizationViewTarget.data.applicantSignatureDataUrl ? (
+                  <div className="mt-4">
+                    <p className="mb-2 text-sm font-medium text-slate-700">手写签名</p>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Employee signatures are stored as local data URLs. */}
+                    <img
+                      src={regularizationViewTarget.data.applicantSignatureDataUrl}
+                      alt="申请人签名"
+                      className="h-24 max-w-full rounded-md border border-slate-200 bg-white object-contain p-2"
+                    />
+                  </div>
+                ) : null}
+              </DetailSection>
+
+              <DetailSection title="部门负责人和相关部门填写">
+                <DetailGrid
+                  pairs={[
+                    ['综合评级', regularizationViewTarget.data.rating],
+                    ['转正建议', regularizationViewTarget.data.suggestion],
+                    ['建议日期', formatDate(regularizationViewTarget.data.suggestionDate)],
+                    ['建议岗位', regularizationViewTarget.data.transferPosition],
+                    ['薪酬建议', regularizationViewTarget.data.salarySuggestion],
+                    ['薪酬金额', regularizationViewTarget.data.salaryAmount],
+                    ['社保意见', regularizationViewTarget.data.socialSecurity],
+                    ['社保年月', regularizationViewTarget.data.socialSecurityMonth],
+                    ['部门负责人', regularizationViewTarget.data.departmentManager],
+                    ['部门日期', formatDate(regularizationViewTarget.data.departmentDate)],
+                    ['人资签字', regularizationViewTarget.data.hrLeader],
+                    ['人资日期', formatDate(regularizationViewTarget.data.hrDate)],
+                    ['公司签字', regularizationViewTarget.data.companyLeader],
+                    ['公司日期', formatDate(regularizationViewTarget.data.companyDate)],
+                  ]}
+                />
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="mb-2 text-sm font-medium text-slate-700">其他意见</p>
+                    <div className="min-h-16 whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+                      {regularizationViewTarget.data.otherOpinion || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-sm font-medium text-slate-700">人力资源部领导意见</p>
+                    <div className="min-h-16 whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+                      {regularizationViewTarget.data.hrOpinion || '-'}
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="mb-2 text-sm font-medium text-slate-700">公司领导意见</p>
+                    <div className="min-h-16 whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+                      {regularizationViewTarget.data.companyOpinion || '-'}
+                    </div>
+                  </div>
+                </div>
+              </DetailSection>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegularizationViewOpen(false)}>
+              关闭
+            </Button>
+            {regularizationViewTarget?.status === '待处理' && !regularizationViewTarget.deletedAt && (
+              <Button
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => {
+                  setRegularizationViewOpen(false);
+                  openRegularizationReview(regularizationViewTarget);
+                }}
+              >
+                <FileCheck2 className="h-4 w-4" />
+                审核
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={regularizationEditOpen} onOpenChange={setRegularizationEditOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>修改转正申请</DialogTitle>
+            <DialogDescription>
+              修改员工提交内容和后台填写内容，保存后会同步更新导出的转正申请表。
+            </DialogDescription>
+          </DialogHeader>
+          {regularizationEditData && (
+            <div className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">申请人</label>
+                  <Input value={regularizationEditData.applicantName} onChange={(event) => updateRegularizationEditField('applicantName', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">部门</label>
+                  <Input value={regularizationEditData.department} onChange={(event) => updateRegularizationEditField('department', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">岗位</label>
+                  <Input value={regularizationEditData.position} onChange={(event) => updateRegularizationEditField('position', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">填表日期</label>
+                  <Input type="date" value={regularizationEditData.fillDate} onChange={(event) => updateRegularizationEditField('fillDate', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">入职日期</label>
+                  <Input type="date" value={regularizationEditData.hireDate} onChange={(event) => updateRegularizationEditField('hireDate', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">转正日期</label>
+                  <Input type="date" value={regularizationEditData.regularizationDate} onChange={(event) => updateRegularizationEditField('regularizationDate', event.target.value)} />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">试用期工作小结</label>
+                <Textarea value={regularizationEditData.workSummary} onChange={(event) => updateRegularizationEditField('workSummary', event.target.value)} className="min-h-28" />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">综合评级</label>
+                  <select
+                    value={regularizationEditData.rating}
+                    onChange={(event) => updateRegularizationEditField('rating', event.target.value as RegularizationFormData['rating'])}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">不选择</option>
+                    <option value="优秀">优秀</option>
+                    <option value="良好">良好</option>
+                    <option value="合格">合格</option>
+                    <option value="需改进">需改进</option>
+                    <option value="不合格">不合格</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">转正建议</label>
+                  <select
+                    value={regularizationEditData.suggestion}
+                    onChange={(event) => updateRegularizationEditField('suggestion', event.target.value as RegularizationFormData['suggestion'])}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">不选择</option>
+                    <option value="提前转正">提前转正</option>
+                    <option value="按期转正">按期转正</option>
+                    <option value="辞退">辞退</option>
+                    <option value="转岗">转岗</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">建议日期</label>
+                  <Input type="date" value={regularizationEditData.suggestionDate} onChange={(event) => updateRegularizationEditField('suggestionDate', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">建议岗位</label>
+                  <Input value={regularizationEditData.transferPosition} onChange={(event) => updateRegularizationEditField('transferPosition', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">薪酬建议</label>
+                  <select
+                    value={regularizationEditData.salarySuggestion}
+                    onChange={(event) => updateRegularizationEditField('salarySuggestion', event.target.value as RegularizationFormData['salarySuggestion'])}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">不选择</option>
+                    <option value="无">无</option>
+                    <option value="建议为">建议为</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">薪酬金额</label>
+                  <Input value={regularizationEditData.salaryAmount} onChange={(event) => updateRegularizationEditField('salaryAmount', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">社保意见</label>
+                  <select
+                    value={regularizationEditData.socialSecurity}
+                    onChange={(event) => updateRegularizationEditField('socialSecurity', event.target.value as RegularizationFormData['socialSecurity'])}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">不选择</option>
+                    <option value="不买社保">不买社保</option>
+                    <option value="社保起购年月">社保起购年月</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">社保起购年月</label>
+                  <Input value={regularizationEditData.socialSecurityMonth} onChange={(event) => updateRegularizationEditField('socialSecurityMonth', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">部门负责人</label>
+                  <Input value={regularizationEditData.departmentManager} onChange={(event) => updateRegularizationEditField('departmentManager', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">部门日期</label>
+                  <Input type="date" value={regularizationEditData.departmentDate} onChange={(event) => updateRegularizationEditField('departmentDate', event.target.value)} />
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">其他意见</label>
+                  <Textarea value={regularizationEditData.otherOpinion} onChange={(event) => updateRegularizationEditField('otherOpinion', event.target.value)} className="min-h-20" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">人力资源部领导意见</label>
+                  <Textarea value={regularizationEditData.hrOpinion} onChange={(event) => updateRegularizationEditField('hrOpinion', event.target.value)} className="min-h-20" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">人资签字</label>
+                  <Input value={regularizationEditData.hrLeader} onChange={(event) => updateRegularizationEditField('hrLeader', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">人资日期</label>
+                  <Input type="date" value={regularizationEditData.hrDate} onChange={(event) => updateRegularizationEditField('hrDate', event.target.value)} />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium text-slate-700">公司领导意见</label>
+                  <Textarea value={regularizationEditData.companyOpinion} onChange={(event) => updateRegularizationEditField('companyOpinion', event.target.value)} className="min-h-20" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">公司领导签字</label>
+                  <Input value={regularizationEditData.companyLeader} onChange={(event) => updateRegularizationEditField('companyLeader', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">公司日期</label>
+                  <Input type="date" value={regularizationEditData.companyDate} onChange={(event) => updateRegularizationEditField('companyDate', event.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegularizationEditOpen(false)} disabled={regularizationSavingEdit}>
+              取消
+            </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={submitRegularizationEdit} disabled={regularizationSavingEdit}>
+              {regularizationSavingEdit && <Loader2 className="h-4 w-4 animate-spin" />}
+              保存修改
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={regularizationReviewOpen} onOpenChange={setRegularizationReviewOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>审核转正申请</DialogTitle>
+            <DialogDescription>
+              这里填写模板中“以下由部门负责人和相关部门填写”的内容，审核完成后才能导出完整转正申请表。
+            </DialogDescription>
+          </DialogHeader>
+          {regularizationReviewTarget && regularizationReviewData && (
+            <div className="space-y-5">
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                {regularizationReviewTarget.applicantName} / {display(regularizationReviewTarget.department)} / {display(regularizationReviewTarget.position)}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">综合评级</label>
+                  <select
+                    value={regularizationReviewData.rating}
+                    onChange={(event) => updateRegularizationReviewField('rating', event.target.value as RegularizationFormData['rating'])}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">请选择</option>
+                    <option value="优秀">优秀</option>
+                    <option value="良好">良好</option>
+                    <option value="合格">合格</option>
+                    <option value="需改进">需改进</option>
+                    <option value="不合格">不合格</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">转正建议</label>
+                  <select
+                    value={regularizationReviewData.suggestion}
+                    onChange={(event) => updateRegularizationReviewField('suggestion', event.target.value as RegularizationFormData['suggestion'])}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">不选择</option>
+                    <option value="提前转正">提前转正</option>
+                    <option value="按期转正">按期转正</option>
+                    <option value="辞退">辞退</option>
+                    <option value="转岗">转岗</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">建议日期</label>
+                  <Input type="date" value={regularizationReviewData.suggestionDate} onChange={(event) => updateRegularizationReviewField('suggestionDate', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">建议岗位</label>
+                  <Input value={regularizationReviewData.transferPosition} onChange={(event) => updateRegularizationReviewField('transferPosition', event.target.value)} placeholder="转岗时填写" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">薪酬建议</label>
+                  <select
+                    value={regularizationReviewData.salarySuggestion}
+                    onChange={(event) => updateRegularizationReviewField('salarySuggestion', event.target.value as RegularizationFormData['salarySuggestion'])}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">不选择</option>
+                    <option value="无">无</option>
+                    <option value="建议为">建议为</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">薪酬金额</label>
+                  <Input value={regularizationReviewData.salaryAmount} onChange={(event) => updateRegularizationReviewField('salaryAmount', event.target.value)} placeholder="例如 4500元/月" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">社保意见</label>
+                  <select
+                    value={regularizationReviewData.socialSecurity}
+                    onChange={(event) => updateRegularizationReviewField('socialSecurity', event.target.value as RegularizationFormData['socialSecurity'])}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+                  >
+                    <option value="">不选择</option>
+                    <option value="不买社保">不买社保</option>
+                    <option value="社保起购年月">社保起购年月</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">社保起购年月</label>
+                  <Input value={regularizationReviewData.socialSecurityMonth} onChange={(event) => updateRegularizationReviewField('socialSecurityMonth', event.target.value)} placeholder="例如 2026年07月" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">其他意见</label>
+                <Textarea value={regularizationReviewData.otherOpinion} onChange={(event) => updateRegularizationReviewField('otherOpinion', event.target.value)} className="min-h-20" />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">部门负责人</label>
+                  <Input value={regularizationReviewData.departmentManager} onChange={(event) => updateRegularizationReviewField('departmentManager', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">部门日期</label>
+                  <Input type="date" value={regularizationReviewData.departmentDate} onChange={(event) => updateRegularizationReviewField('departmentDate', event.target.value)} />
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium text-slate-700">人力资源部领导意见</label>
+                  <Textarea value={regularizationReviewData.hrOpinion} onChange={(event) => updateRegularizationReviewField('hrOpinion', event.target.value)} className="min-h-20" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">人资签字</label>
+                  <Input value={regularizationReviewData.hrLeader} onChange={(event) => updateRegularizationReviewField('hrLeader', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">人资日期</label>
+                  <Input type="date" value={regularizationReviewData.hrDate} onChange={(event) => updateRegularizationReviewField('hrDate', event.target.value)} />
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium text-slate-700">公司领导意见</label>
+                  <Textarea value={regularizationReviewData.companyOpinion} onChange={(event) => updateRegularizationReviewField('companyOpinion', event.target.value)} className="min-h-20" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">公司领导签字</label>
+                  <Input value={regularizationReviewData.companyLeader} onChange={(event) => updateRegularizationReviewField('companyLeader', event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">公司日期</label>
+                  <Input type="date" value={regularizationReviewData.companyDate} onChange={(event) => updateRegularizationReviewField('companyDate', event.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegularizationReviewOpen(false)} disabled={regularizationReviewing}>
+              取消
+            </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={submitRegularizationReview} disabled={regularizationReviewing}>
+              {regularizationReviewing && <Loader2 className="h-4 w-4 animate-spin" />}
+              完成审核
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
         <DialogContent>

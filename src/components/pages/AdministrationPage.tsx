@@ -6,6 +6,7 @@ import {
   Archive,
   BedDouble,
   CheckCircle2,
+  ChevronDown,
   DoorOpen,
   Download,
   Droplets,
@@ -1076,31 +1077,60 @@ export default function AdministrationPage() {
           </div>
           <h1 className="mt-1 text-xl font-semibold tracking-normal text-slate-950">行政管理</h1>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild className="bg-blue-600 hover:bg-blue-700">
-            <Link href="/dormitory" target="_blank">
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          <div className="group relative z-30">
+            <Button className="bg-blue-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md">
               <Plus className="h-4 w-4" />
-              住宿申请
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/water-meter" target="_blank">
-              <Droplets className="h-4 w-4" />
-              水费登记
-            </Link>
-          </Button>
-          <Button variant="outline" onClick={openWaterRecords}>
-            <Droplets className="h-4 w-4" />
-            水表记录
-          </Button>
-          <Button variant="outline" onClick={() => setRoomsOpen(true)}>
-            <DoorOpen className="h-4 w-4" />
-            房号管理
-          </Button>
-          <Button variant="outline" onClick={() => setBedsOpen(true)}>
-            <BedDouble className="h-4 w-4" />
-            床号管理
-          </Button>
+              行政办理
+              <ChevronDown className="h-4 w-4 transition-transform duration-200 group-hover:rotate-180 group-focus-within:rotate-180" />
+            </Button>
+            <div className="pointer-events-none absolute right-0 top-full w-[520px] max-w-[calc(100vw-2rem)] origin-top-right translate-y-1 pt-2 opacity-0 transition-all duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 group-focus-within:opacity-100">
+              <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Link
+                    href="/dormitory"
+                    target="_blank"
+                    className="flex items-center gap-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-100 hover:shadow-sm"
+                  >
+                    <Plus className="h-4 w-4" />
+                    住宿申请
+                  </Link>
+                  <Link
+                    href="/water-meter"
+                    target="_blank"
+                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
+                  >
+                    <Droplets className="h-4 w-4" />
+                    水费登记
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={openWaterRecords}
+                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
+                  >
+                    <Droplets className="h-4 w-4" />
+                    水表记录
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRoomsOpen(true)}
+                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
+                  >
+                    <DoorOpen className="h-4 w-4" />
+                    房号管理
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBedsOpen(true)}
+                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
+                  >
+                    <BedDouble className="h-4 w-4" />
+                    床号管理
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
           <Button
             variant="outline"
             disabled={!canExportDormitory(selectedRecord)}

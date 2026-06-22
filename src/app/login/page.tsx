@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loginSuccess, setLoginSuccess] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +38,10 @@ export default function LoginPage() {
         if (data.token) {
           localStorage.setItem('token', data.token);
         }
-        window.location.href = '/';
+        setLoginSuccess(true);
+        window.setTimeout(() => {
+          window.location.href = '/';
+        }, 850);
       } else {
         setError(data.error || '登录失败');
         setLoading(false);
@@ -77,6 +81,20 @@ export default function LoginPage() {
         <line x1="0" y1="30%" x2="70%" y2="100%" stroke="white" strokeWidth="0.5" />
         <line x1="50%" y1="0" x2="100%" y2="50%" stroke="white" strokeWidth="0.5" />
       </svg>
+
+      {loginSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
+          <div className="login-success-card w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-2xl">
+            <div className="login-success-check mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 text-white">
+              <svg className="h-9 w-9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div className="mt-4 text-xl font-semibold text-slate-950">登录成功</div>
+            <div className="mt-2 text-sm text-slate-500">正在进入系统...</div>
+          </div>
+        </div>
+      )}
 
       {/* 登录卡片 */}
       <div className="relative z-10 bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row w-full max-w-4xl mx-4">
@@ -172,10 +190,12 @@ export default function LoginPage() {
             {/* 登录按钮 */}
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-3 px-4 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-500 hover:to-blue-600 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              disabled={loading || loginSuccess}
+              className="login-action-button w-full py-3 px-4 bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-500 hover:to-blue-600 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
-              {loading ? (
+              {loginSuccess ? (
+                '登录成功'
+              ) : loading ? (
                 <>
                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

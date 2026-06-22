@@ -142,6 +142,11 @@ const hasAnyChildPermission = (children: NavMenuItem[], permissions: string[], i
   return children.some(child => hasPermission(child.key, permissions, isAdmin));
 };
 
+const hasActiveDescendant = (item: NavMenuItem, activeKey: string): boolean => {
+  if (item.key === activeKey) return true;
+  return item.children?.some(child => hasActiveDescendant(child, activeKey)) || false;
+};
+
 function MenuItem({ 
   item, 
   activeKey, 
@@ -163,15 +168,25 @@ function MenuItem({
   isAdmin: boolean;
   level?: number;
 }) {
-  const [isExpanded, setIsExpanded] = useState(true);
   const Icon = iconMap[item.icon] || LayoutDashboard;
   const isActive = activeKey === item.key;
   const hasChildren = item.children && item.children.length > 0;
   const hasChildPermission = hasChildren && hasAnyChildPermission(item.children || [], permissions, isAdmin);
+  const hasActiveChild = hasChildren
+    ? item.children?.some(child => hasActiveDescendant(child, activeKey)) || false
+    : false;
+  const [isExpanded, setIsExpanded] = useState(hasActiveChild);
+
+  useEffect(() => {
+    if (collapsed) {
+      setIsExpanded(false);
+      return;
+    }
+
+    setIsExpanded(hasActiveChild);
+  }, [collapsed, hasActiveChild]);
 
   if (hasChildren) {
-    const hasActiveChild = item.children?.some(child => activeKey === child.key) || false;
-    
     return (
       <div key={item.key}>
         <Button
