@@ -33,6 +33,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     }
 
     const record = parseSocialSecurityRow(row);
+    if (record.status === '待审核') {
+      return NextResponse.json({ success: false, error: '请先审核社保申请，再导出或打印' }, { status: 400 });
+    }
+
     const buffer = buildSocialSecurityDocx(record);
 
     db.prepare(`

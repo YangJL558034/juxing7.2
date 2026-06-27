@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, logOperationServer } from '@/lib/database';
 import { verifyToken } from '@/lib/auth';
+import { isCompleteIdCard, isCompleteMainlandMobile } from '@/lib/identity-validation';
 import { normalizeOnboardingData, parseOnboardingRow, type OnboardingDbRow } from '@/lib/onboarding-records';
 import { resolveEmployeeLocationByDepartment } from '@/lib/employee-location';
 
@@ -59,6 +60,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
     if (!data.phone.trim()) {
       return NextResponse.json({ success: false, error: '联系电话不能为空' }, { status: 400 });
+    }
+    if (!data.idCard.trim()) {
+      return NextResponse.json({ success: false, error: '身份证号不能为空' }, { status: 400 });
+    }
+    if (!isCompleteIdCard(data.idCard)) {
+      return NextResponse.json({ success: false, error: '身份证号必须填写完整，请输入18位身份证号' }, { status: 400 });
+    }
+    if (!isCompleteMainlandMobile(data.phone)) {
+      return NextResponse.json({ success: false, error: '联系电话必须填写完整，请输入11位手机号' }, { status: 400 });
     }
     if (!data.position.trim()) {
       return NextResponse.json({ success: false, error: '入职岗位不能为空' }, { status: 400 });

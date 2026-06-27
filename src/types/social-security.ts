@@ -1,5 +1,5 @@
 export type SocialSecurityDocumentType = 'no_purchase' | 'waiver';
-export type SocialSecurityStatus = '待处理' | '已导出';
+export type SocialSecurityStatus = '待审核' | '已审核' | '已导出';
 
 export interface SocialSecurityFormData {
   documentType: SocialSecurityDocumentType;
@@ -28,6 +28,10 @@ export interface SocialSecurityRecord {
   position: string;
   hireDate: string;
   applicationDate: string;
+  submittedBy: string;
+  submittedAt: string;
+  reviewerName: string | null;
+  reviewedAt: string | null;
   exportedAt: string | null;
   createdAt: string;
   updatedAt: string | null;

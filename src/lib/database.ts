@@ -536,7 +536,7 @@ export function initDatabase(dbInstance: Database.Database) {
     CREATE TABLE IF NOT EXISTS social_security_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       document_type TEXT NOT NULL,
-      status TEXT DEFAULT '待处理',
+      status TEXT DEFAULT '待审核',
       name TEXT NOT NULL,
       id_card TEXT,
       phone TEXT,
@@ -544,6 +544,39 @@ export function initDatabase(dbInstance: Database.Database) {
       position TEXT,
       hire_date TEXT,
       application_date TEXT,
+      data_json TEXT NOT NULL,
+      reviewer_name TEXT,
+      reviewed_at DATETIME,
+      exported_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME,
+      deleted_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS social_security_purchase_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      contract_status TEXT,
+      department TEXT,
+      employee_name TEXT NOT NULL,
+      domicile TEXT,
+      id_card TEXT,
+      phone TEXT,
+      bank_card TEXT,
+      gender TEXT,
+      birth_date TEXT,
+      education TEXT,
+      insurance_status TEXT,
+      contract_count TEXT,
+      contract_start_date TEXT,
+      contract_term_years TEXT,
+      contract_end_date TEXT,
+      due_days TEXT,
+      employment_status TEXT,
+      resignation_date TEXT,
+      confidentiality_agreement TEXT,
+      probation_salary TEXT,
+      remarks TEXT,
       data_json TEXT NOT NULL,
       exported_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -830,7 +863,38 @@ export function initDatabase(dbInstance: Database.Database) {
       { name: 'status', definition: 'TEXT' },
       { name: 'name', definition: 'TEXT' },
       { name: 'id_card', definition: 'TEXT' },
+      { name: 'reviewer_name', definition: 'TEXT' },
+      { name: 'reviewed_at', definition: 'DATETIME' },
       { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+    ensureColumns(dbInstance, 'social_security_purchase_records', [
+      { name: 'category', definition: 'TEXT' },
+      { name: 'contract_status', definition: 'TEXT' },
+      { name: 'department', definition: 'TEXT' },
+      { name: 'employee_name', definition: 'TEXT' },
+      { name: 'domicile', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'phone', definition: 'TEXT' },
+      { name: 'bank_card', definition: 'TEXT' },
+      { name: 'gender', definition: 'TEXT' },
+      { name: 'birth_date', definition: 'TEXT' },
+      { name: 'education', definition: 'TEXT' },
+      { name: 'insurance_status', definition: 'TEXT' },
+      { name: 'contract_count', definition: 'TEXT' },
+      { name: 'contract_start_date', definition: 'TEXT' },
+      { name: 'contract_term_years', definition: 'TEXT' },
+      { name: 'contract_end_date', definition: 'TEXT' },
+      { name: 'due_days', definition: 'TEXT' },
+      { name: 'employment_status', definition: 'TEXT' },
+      { name: 'resignation_date', definition: 'TEXT' },
+      { name: 'confidentiality_agreement', definition: 'TEXT' },
+      { name: 'probation_salary', definition: 'TEXT' },
+      { name: 'remarks', definition: 'TEXT' },
+      { name: 'data_json', definition: "TEXT DEFAULT '{}'" },
+      { name: 'exported_at', definition: 'DATETIME' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', definition: 'DATETIME' },
       { name: 'deleted_at', definition: 'DATETIME' },
     ]);
     ensureColumns(dbInstance, 'dormitory_records', [
@@ -877,6 +941,11 @@ export function initDatabase(dbInstance: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_social_security_name ON social_security_records(name);
     CREATE INDEX IF NOT EXISTS idx_social_security_created_at ON social_security_records(created_at);
     CREATE INDEX IF NOT EXISTS idx_social_security_deleted_at ON social_security_records(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_social_security_purchase_category ON social_security_purchase_records(category);
+    CREATE INDEX IF NOT EXISTS idx_social_security_purchase_employee ON social_security_purchase_records(employee_name);
+    CREATE INDEX IF NOT EXISTS idx_social_security_purchase_id_card ON social_security_purchase_records(id_card);
+    CREATE INDEX IF NOT EXISTS idx_social_security_purchase_created_at ON social_security_purchase_records(created_at);
+    CREATE INDEX IF NOT EXISTS idx_social_security_purchase_deleted_at ON social_security_purchase_records(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_dormitory_status ON dormitory_records(status);
     CREATE INDEX IF NOT EXISTS idx_dormitory_name ON dormitory_records(name);
     CREATE INDEX IF NOT EXISTS idx_dormitory_created_at ON dormitory_records(created_at);
@@ -1025,6 +1094,37 @@ export function initDatabase(dbInstance: Database.Database) {
       { name: 'hire_date', definition: 'TEXT' },
       { name: 'application_date', definition: 'TEXT' },
       { name: 'data_json', definition: "TEXT DEFAULT '{}'" },
+      { name: 'reviewer_name', definition: 'TEXT' },
+      { name: 'reviewed_at', definition: 'DATETIME' },
+      { name: 'exported_at', definition: 'DATETIME' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', definition: 'DATETIME' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
+    ensureColumns(dbInstance, 'social_security_purchase_records', [
+      { name: 'category', definition: 'TEXT' },
+      { name: 'contract_status', definition: 'TEXT' },
+      { name: 'department', definition: 'TEXT' },
+      { name: 'employee_name', definition: 'TEXT' },
+      { name: 'domicile', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'phone', definition: 'TEXT' },
+      { name: 'bank_card', definition: 'TEXT' },
+      { name: 'gender', definition: 'TEXT' },
+      { name: 'birth_date', definition: 'TEXT' },
+      { name: 'education', definition: 'TEXT' },
+      { name: 'insurance_status', definition: 'TEXT' },
+      { name: 'contract_count', definition: 'TEXT' },
+      { name: 'contract_start_date', definition: 'TEXT' },
+      { name: 'contract_term_years', definition: 'TEXT' },
+      { name: 'contract_end_date', definition: 'TEXT' },
+      { name: 'due_days', definition: 'TEXT' },
+      { name: 'employment_status', definition: 'TEXT' },
+      { name: 'resignation_date', definition: 'TEXT' },
+      { name: 'confidentiality_agreement', definition: 'TEXT' },
+      { name: 'probation_salary', definition: 'TEXT' },
+      { name: 'remarks', definition: 'TEXT' },
+      { name: 'data_json', definition: "TEXT DEFAULT '{}'" },
       { name: 'exported_at', definition: 'DATETIME' },
       { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
       { name: 'updated_at', definition: 'DATETIME' },
@@ -1094,6 +1194,7 @@ export function initDatabase(dbInstance: Database.Database) {
 
   try {
     dbInstance.prepare("DELETE FROM social_security_records WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '+8 hours', '-7 days')").run();
+    dbInstance.prepare("DELETE FROM social_security_purchase_records WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', '+8 hours', '-7 days')").run();
   } catch (error) {
     console.error('Social security records cleanup failed:', error);
   }

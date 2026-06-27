@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { defaultOnboardingData } from '@/lib/onboarding-records';
 import { chinaToday } from '@/lib/china-time';
+import { isCompleteIdCard, isCompleteMainlandMobile, normalizeIdCard, normalizeMobile } from '@/lib/identity-validation';
 import { cn } from '@/lib/utils';
 import type { OnboardingFormData } from '@/types/onboarding';
 
@@ -98,6 +99,8 @@ function TextField({
   placeholder,
   required,
   type = 'text',
+  inputMode,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -105,6 +108,8 @@ function TextField({
   placeholder: string;
   required?: boolean;
   type?: string;
+  inputMode?: 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search';
+  maxLength?: number;
 }) {
   return (
     <div className="grid grid-cols-[82px_minmax(0,1fr)] items-center gap-2">
@@ -116,6 +121,8 @@ function TextField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         type={type}
+        inputMode={inputMode}
+        maxLength={maxLength}
         placeholder={placeholder}
         className="h-11 min-w-0 rounded-md border-slate-200 text-base"
       />
@@ -269,8 +276,8 @@ function PersonalStep({ data, update }: { data: OnboardingFormData; update: Upda
         onChange={(value) => update('maritalStatus', value)}
         options={['已婚有子女', '已婚无子女', '未婚', '其他']}
       />
-      <TextField label="身份证号" required value={data.idCard} onChange={(value) => update('idCard', value)} placeholder="请输入身份证号" />
-      <TextField label="联系电话" required value={data.phone} onChange={(value) => update('phone', value)} placeholder="请输入联系电话" />
+      <TextField label="身份证号" required value={data.idCard} onChange={(value) => update('idCard', normalizeIdCard(value))} placeholder="请输入身份证号" inputMode="text" maxLength={18} />
+      <TextField label="联系电话" required value={data.phone} onChange={(value) => update('phone', normalizeMobile(value))} placeholder="请输入联系电话" inputMode="tel" maxLength={11} />
       <TextField label="微信/QQ" value={data.wechat} onChange={(value) => update('wechat', value)} placeholder="请输入微信号或QQ号" />
       <TextField label="邮箱" value={data.email} onChange={(value) => update('email', value)} placeholder="请输入邮箱" />
     </SectionCard>
@@ -292,7 +299,7 @@ function EmergencyStep({ data, update }: { data: OnboardingFormData; update: Upd
           <TextField label="姓名" required value={contact.name} onChange={(value) => updateContact('name', value)} placeholder="请输入联系人姓名" />
           <TextField label="关系" required value={contact.relation} onChange={(value) => updateContact('relation', value)} placeholder="请输入关系" />
           <TextField label="单位地址" required value={contact.address} onChange={(value) => updateContact('address', value)} placeholder="请输入工作单位和现住址" />
-          <TextField label="联系电话" required value={contact.phone} onChange={(value) => updateContact('phone', value)} placeholder="请输入联系电话" />
+          <TextField label="联系电话" required value={contact.phone} onChange={(value) => updateContact('phone', normalizeMobile(value))} placeholder="请输入联系电话" inputMode="tel" maxLength={11} />
         </div>
       </div>
     </SectionCard>
@@ -519,10 +526,15 @@ export default function OnboardingPage() {
 
   const validateCurrent = () => {
     if (step === 1 && !data.position.trim()) return '请填写入职岗位';
-    if (step === 2 && (!data.name.trim() || !data.idCard.trim() || !data.phone.trim())) return '请填写姓名、身份证号和联系电话';
+    if (step === 2) {
+      if (!data.name.trim() || !data.idCard.trim() || !data.phone.trim()) return '请填写姓名、身份证号和联系电话';
+      if (!isCompleteIdCard(data.idCard)) return '身份证号必须填写完整，请输入18位身份证号';
+      if (!isCompleteMainlandMobile(data.phone)) return '联系电话必须填写完整，请输入11位手机号';
+    }
     if (step === 3) {
       const contact = data.emergencyContacts[0];
       if (!contact?.name.trim() || !contact?.phone.trim()) return '请填写紧急联系人姓名和电话';
+      if (!isCompleteMainlandMobile(contact.phone)) return '紧急联系人电话必须填写完整，请输入11位手机号';
     }
     if (step === 5 && (!data.hireDate || !data.wageMethod.trim())) return '请填写入职日期和工资计算方式';
     if (step === 6 && !data.promiseConfirmed) return '请勾选入职承诺确认';

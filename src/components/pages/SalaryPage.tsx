@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -160,6 +160,33 @@ interface MonthlyRecord {
   remark?: string;
 }
 
+interface ImportedSalaryRecord {
+  name: string;
+  normalHours?: number;
+  weekdayOvertime?: number;
+  weekendOvertime?: number;
+  baseSalary?: number;
+  normalPay?: number;
+  weekdayOvertimePay?: number;
+  weekendOvertimePay?: number;
+  totalPayable?: number;
+  totalDeduction?: number;
+  actualAmount?: number;
+}
+
+interface ImportedWorkHoursEmployee {
+  name: string;
+  normalWork: number;
+  weekdayOvertime: number;
+  weekendOvertime: number;
+}
+
+export type SalarySectionKey = 'employees' | 'salary' | 'workhours' | 'attendance';
+
+interface SalaryPageProps {
+  section?: SalarySectionKey;
+}
+
 function normalizeLocation(value?: string | null): 'office' | 'workshop' {
   const normalized = String(value || '').trim().toLowerCase();
   return normalized === 'workshop' || normalized === '车间' ? 'workshop' : 'office';
@@ -184,8 +211,8 @@ function formatSalaryMoney(value?: number | string | null) {
   return `¥${formatSalaryValue(value)}`;
 }
 
-export default function SalaryPage() {
-  const [activeTab, setActiveTab] = useState('salary');
+export default function SalaryPage({ section = 'salary' }: SalaryPageProps) {
+  const [activeTab, setActiveTab] = useState<SalarySectionKey>(section);
   const [searchMonth, setSearchMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [searchYear, setSearchYear] = useState(new Date().getFullYear().toString());
   // 每个标签页独立的位置状态
@@ -200,7 +227,7 @@ export default function SalaryPage() {
   const [employeeImportLocation, setEmployeeImportLocation] = useState<'office' | 'workshop'>('workshop');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [newEmployee, setNewEmployee] = useState({ name: '', phone: '', id_card: '', department: '', location: 'workshop' as 'office' | 'workshop', hire_date: '' });
-  const [editingEmployee, setEditingEmployee] = useState<any>(null);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [showEditEmployeeDialog, setShowEditEmployeeDialog] = useState(false);
   const [editFormData, setEditFormData] = useState({ name: '', phone: '', id_card: '', department: '', location: 'workshop' as string, status: '在职', hire_date: '' });
   const [monthlyRecords, setMonthlyRecords] = useState<MonthlyRecord[]>([]);
@@ -229,6 +256,10 @@ export default function SalaryPage() {
     actual_amount: 0,
   });
   const [showEditSalaryDialog, setShowEditSalaryDialog] = useState(false);
+
+  useEffect(() => {
+    setActiveTab(section);
+  }, [section]);
   
   // 签字图片查看状态
   const [viewingSignature, setViewingSignature] = useState<{ signature: string; employeeName: string; signTime?: string } | null>(null);
@@ -504,12 +535,6 @@ export default function SalaryPage() {
     alert('链接已复制到剪贴板');
   };
   
-  // 获取员工列表
-  useEffect(() => {
-    fetchEmployees();
-    fetchMonthlyRecords();
-  }, []);
-  
   const fetchEmployees = async () => {
     try {
       const response = await fetch('/api/employees');
@@ -538,6 +563,11 @@ export default function SalaryPage() {
       setIsRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    fetchEmployees();
+    fetchMonthlyRecords();
+  }, []);
 
   // 自动刷新 - 每10秒更新一次工资工时数据
   const { refreshNow } = useAutoRefresh({
@@ -827,7 +857,7 @@ export default function SalaryPage() {
   };
 
   // 打开编辑员工弹窗
-  const openEditEmployeeDialog = (employee: any) => {
+  const openEditEmployeeDialog = (employee: Employee) => {
     setEditingEmployee(employee);
     setEditFormData({
       name: employee.name || '',
@@ -843,6 +873,7 @@ export default function SalaryPage() {
   
   // 更新员工
   const handleUpdateEmployee = async () => {
+    if (!editingEmployee) return;
     if (!editFormData.name || !editFormData.id_card || !editFormData.department) {
       alert('请填写姓名、身份证和部门');
       return;
@@ -869,7 +900,7 @@ export default function SalaryPage() {
   };
   
   // 导入工资数据
-  const handleImportSalary = async (data: { month: string; year: string; records: any[]; location: string }) => {
+  const handleImportSalary = async (data: { month: string; year: string; records: ImportedSalaryRecord[]; location: string }) => {
     try {
       // 批量导入工资记录
       for (const record of data.records) {
@@ -1042,7 +1073,7 @@ export default function SalaryPage() {
   };
   
   // 导入工时数据
-  const handleImportWorkHours = async (data: { month: string; year: string; employees: any[] }) => {
+  const handleImportWorkHours = async (data: { month: string; year: string; employees: ImportedWorkHoursEmployee[] }) => {
     try {
       // 批量导入工时记录
       for (const emp of data.employees) {
@@ -1128,52 +1159,48 @@ export default function SalaryPage() {
           <h1 className="text-2xl font-bold">工资工时查询</h1>
           <p className="text-muted-foreground">管理车间员工、查询工资明细和工时记录</p>
         </div>
-        <div className="flex items-center gap-2">
-          <WorkHoursImport 
-            onImportSalary={handleImportSalary}
-            onImportWorkHours={handleImportWorkHours}
-            onImportComplete={handleImportComplete}
-          />
-          <Button 
-            variant="outline"
-            className="flex items-center gap-2"
-            onClick={() => setShowEmployeeImportDialog(true)}
-          >
-            <Upload className="h-4 w-4" />
-            员工一键导入
-          </Button>
-          <Button 
-            className="flex items-center gap-2"
-            onClick={() => setShowCreateEmployeeDialog(true)}
-          >
-            <Plus className="h-4 w-4" />
-            创建员工
-          </Button>
-          <Button 
-            variant="outline" 
-            className="flex items-center gap-2"
-            onClick={() => setShowEmployeeQueryDialog(true)}
-          >
-          <Users className="h-4 w-4" />
-            员工自助查询
-          </Button>
-        </div>
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex items-center justify-between mb-4">
-          <TabsList className="grid grid-cols-4 max-w-xl">
-            <TabsTrigger value="employees">员工管理</TabsTrigger>
-            <TabsTrigger value="salary">工资明细</TabsTrigger>
-            <TabsTrigger value="workhours">工时记录</TabsTrigger>
-            <TabsTrigger value="attendance">打卡记录</TabsTrigger>
-          </TabsList>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {activeTab === 'employees' ? (
+            <>
+              <Button
+                variant="outline"
+                className="flex items-center gap-2"
+                onClick={() => setShowEmployeeImportDialog(true)}
+              >
+                <Upload className="h-4 w-4" />
+                员工一键导入
+              </Button>
+              <Button
+                className="flex items-center gap-2"
+                onClick={() => setShowCreateEmployeeDialog(true)}
+              >
+                <Plus className="h-4 w-4" />
+                创建员工
+              </Button>
+              <Button
+                variant="outline"
+                className="flex items-center gap-2"
+                onClick={() => setShowEmployeeQueryDialog(true)}
+              >
+                <Users className="h-4 w-4" />
+                员工自助查询
+              </Button>
+            </>
+          ) : (
+            <WorkHoursImport
+              onImportSalary={handleImportSalary}
+              onImportWorkHours={handleImportWorkHours}
+              onImportComplete={handleImportComplete}
+            />
+          )}
           <Button variant="outline" size="sm" onClick={refreshNow} disabled={isRefreshing} className="gap-2">
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             刷新
           </Button>
         </div>
+      </div>
 
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as SalarySectionKey)}>
         <TabsContent value="employees" className="mt-6">
         <Card>
           <CardHeader>
@@ -1217,7 +1244,7 @@ export default function SalaryPage() {
                 <div className="text-center py-8 text-muted-foreground">
                   <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>暂无员工数据</p>
-                  <p className="text-sm mt-2">点击上方"创建员工"按钮添加员工</p>
+                  <p className="text-sm mt-2">点击上方“创建员工”按钮添加员工</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -2126,7 +2153,7 @@ export default function SalaryPage() {
                           当前选择：{year}年{month}月，有数据的月份：{availableMonths.join('、')}
                         </p>
                       )}
-                      <p className="text-sm mt-2">点击"导入工资/工时"按钮导入打卡数据</p>
+                      <p className="text-sm mt-2">点击“导入工资/工时”按钮导入打卡数据</p>
                     </div>
                   );
                 }

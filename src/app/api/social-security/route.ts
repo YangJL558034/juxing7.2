@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status')?.trim();
+    const approved = searchParams.get('approved') === '1';
     const type = searchParams.get('type')?.trim();
     const keyword = searchParams.get('keyword')?.trim();
     const deleted = searchParams.get('deleted') === '1';
@@ -35,7 +36,9 @@ export async function GET(request: NextRequest) {
     } else {
       where.push('deleted_at IS NULL');
     }
-    if (status && status !== 'all') {
+    if (approved) {
+      where.push("status IN ('已审核', '已导出')");
+    } else if (status && status !== 'all') {
       where.push('status = ?');
       params.push(status);
     }
@@ -44,8 +47,8 @@ export async function GET(request: NextRequest) {
       params.push(type);
     }
     if (keyword) {
-      where.push('(name LIKE ? OR id_card LIKE ? OR phone LIKE ? OR department LIKE ?)');
-      params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+      where.push('(name LIKE ? OR id_card LIKE ? OR phone LIKE ? OR department LIKE ? OR position LIKE ?)');
+      params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
     }
 
     const rows = db.prepare(`
@@ -76,7 +79,7 @@ export async function POST(request: NextRequest) {
     const result = db.prepare(`
       INSERT INTO social_security_records (
         document_type, status, name, id_card, phone, department, position, hire_date, application_date, data_json
-      ) VALUES (?, '待处理', ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, '待审核', ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       data.documentType,
       data.name,
@@ -92,7 +95,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       id: Number(result.lastInsertRowid),
-      message: '社保申请提交成功',
+      message: '社保申请提交成功，等待后台审核',
     });
   } catch (error) {
     console.error('Create social security record error:', error);

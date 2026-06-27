@@ -255,7 +255,29 @@ function StatCard({
   );
 }
 
-export default function PersonnelPage() {
+export type PersonnelSectionKey =
+  | 'onboarding'
+  | 'social-security'
+  | 'social-security-purchase'
+  | 'regularization'
+  | 'work-certificate'
+  | 'resignation'
+  | 'resignation-certificate'
+  | 'labor-termination';
+
+const personnelSectionLabels: Record<PersonnelSectionKey, string> = {
+  onboarding: '入职登记',
+  'social-security': '社保管理',
+  'social-security-purchase': '购买社保',
+  regularization: '转正申请',
+  'work-certificate': '工作证明',
+  resignation: '离职申请',
+  'resignation-certificate': '离职证明',
+  'labor-termination': '解除劳动合同',
+};
+
+export default function PersonnelPage({ section = 'onboarding' }: { section?: PersonnelSectionKey }) {
+  const currentSectionLabel = personnelSectionLabels[section];
   const [query, setQuery] = useState('');
   const [keyword, setKeyword] = useState('');
   const [activeStatus, setActiveStatus] = useState<OnboardingStatus>('待审核');
@@ -947,9 +969,9 @@ export default function PersonnelPage() {
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-sm text-slate-500">
-            员工管理 / <span className="text-slate-800">入职登记</span>
+            人事管理 / <span className="text-slate-800">{currentSectionLabel}</span>
           </div>
-          <h1 className="mt-1 text-xl font-semibold tracking-normal text-slate-950">人事管理</h1>
+          <h1 className="mt-1 text-xl font-semibold tracking-normal text-slate-950">{currentSectionLabel}</h1>
         </div>
         <div className="flex flex-wrap items-start justify-end gap-2">
           <div className="group relative z-30">
@@ -1028,25 +1050,31 @@ export default function PersonnelPage() {
               </div>
             </div>
           </div>
-          <Button
-            variant="outline"
-            disabled={!canOutput(selectedRecord)}
-            onClick={() => selectedRecord && exportRecord(selectedRecord)}
-          >
-            <Download className="h-4 w-4" />
-            导出登记表
-          </Button>
-          <Button
-            variant="outline"
-            disabled={!canOutput(selectedRecord)}
-            onClick={() => selectedRecord && printRecord(selectedRecord)}
-          >
-            <Printer className="h-4 w-4" />
-            打印件
-          </Button>
+          {section === 'onboarding' && (
+            <>
+              <Button
+                variant="outline"
+                disabled={!canOutput(selectedRecord)}
+                onClick={() => selectedRecord && exportRecord(selectedRecord)}
+              >
+                <Download className="h-4 w-4" />
+                导出登记表
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!canOutput(selectedRecord)}
+                onClick={() => selectedRecord && printRecord(selectedRecord)}
+              >
+                <Printer className="h-4 w-4" />
+                打印件
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
+      {section === 'onboarding' && (
+      <>
       <div className="mb-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_150px_160px_160px_auto] md:items-end">
           <div className="space-y-1.5">
@@ -1439,9 +1467,15 @@ export default function PersonnelPage() {
         </div>
       </div>
 
-      <SocialSecurityAdminSection />
+      </>
+      )}
 
-      <div className="mt-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+      {section === 'social-security' && <SocialSecurityAdminSection mode="applications" />}
+
+      {section === 'social-security-purchase' && <SocialSecurityAdminSection mode="purchase" />}
+
+      {section === 'regularization' && (
+      <div id="personnel-regularization-section" className="scroll-mt-24 mt-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
@@ -1560,8 +1594,10 @@ export default function PersonnelPage() {
           </Table>
         </div>
       </div>
+      )}
 
-      <div className="mt-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+      {section === 'work-certificate' && (
+      <div id="personnel-work-certificate-section" className="scroll-mt-24 mt-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
@@ -1687,12 +1723,22 @@ export default function PersonnelPage() {
           </Table>
         </div>
       </div>
+      )}
 
-      <ResignationAdminSection />
+      {section === 'resignation' && (
+      <div id="personnel-resignation-section" className="scroll-mt-24">
+        <ResignationAdminSection />
+      </div>
+      )}
 
-      <ResignationCertificateAdminSection />
+      {section === 'resignation-certificate' && (
+      <div id="personnel-resignation-certificate-section" className="scroll-mt-24">
+        <ResignationCertificateAdminSection />
+      </div>
+      )}
 
-      <div className="mt-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+      {section === 'labor-termination' && (
+      <div id="personnel-labor-termination-section" className="scroll-mt-24 mt-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
@@ -1806,6 +1852,7 @@ export default function PersonnelPage() {
           </Table>
         </div>
       </div>
+      )}
 
       <Dialog open={workCertificateViewOpen} onOpenChange={setWorkCertificateViewOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">

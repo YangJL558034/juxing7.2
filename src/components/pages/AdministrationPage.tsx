@@ -138,10 +138,18 @@ interface WaterMeterListResponse {
 }
 
 type DormitoryListTab = DormitoryStatus | '删除记录';
+export type AdministrationSectionKey = 'dormitory' | 'rooms' | 'beds' | 'water-meter';
 
 const emptyCounts: DormitoryCounts = { total: 0, pending: 0, reviewed: 0, checkedIn: 0, checkedOut: 0 };
 const emptyWaterSummary: WaterMeterSummary = { total: 0, totalUsage: 0, totalFee: 0 };
 const roomTypeOptions = ['未设置', '男生寝室', '女生寝室'];
+
+const administrationSectionLabels: Record<AdministrationSectionKey, string> = {
+  dormitory: '住宿申请',
+  rooms: '房号管理',
+  beds: '床号管理',
+  'water-meter': '水表记录',
+};
 
 const statusTone: Record<DormitoryStatus, string> = {
   待审核: 'bg-orange-50 text-orange-700 ring-orange-200',
@@ -259,7 +267,7 @@ function DetailGrid({ pairs }: { pairs: Array<[string, string | number | null | 
   );
 }
 
-export default function AdministrationPage() {
+export default function AdministrationPage({ section = 'dormitory' }: { section?: AdministrationSectionKey }) {
   const [query, setQuery] = useState('');
   const [keyword, setKeyword] = useState('');
   const [activeStatus, setActiveStatus] = useState<DormitoryListTab>('待审核');
@@ -462,6 +470,12 @@ export default function AdministrationPage() {
       setWaterLoading(false);
     }
   }, [waterRoomFilter]);
+
+  useEffect(() => {
+    if (section === 'water-meter') {
+      void loadWaterRecords();
+    }
+  }, [loadWaterRecords, section]);
 
   useEffect(() => {
     if (activeStatus === '删除记录') {
@@ -1068,81 +1082,49 @@ export default function AdministrationPage() {
     window.open(`/api/water-meter/export?${params.toString()}`, '_blank', 'noopener,noreferrer');
   };
 
+  const sectionLabel = administrationSectionLabels[section];
+
   return (
     <div className="min-h-[calc(100vh-3.5rem)] bg-slate-50 p-4 text-slate-950 md:p-6">
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-sm text-slate-500">
-            组织人事 / <span className="text-slate-800">行政管理</span>
+            组织人事 / 行政管理 / <span className="text-slate-800">{sectionLabel}</span>
           </div>
-          <h1 className="mt-1 text-xl font-semibold tracking-normal text-slate-950">行政管理</h1>
+          <h1 className="mt-1 text-xl font-semibold tracking-normal text-slate-950">{sectionLabel}</h1>
         </div>
         <div className="flex flex-wrap items-start justify-end gap-2">
-          <div className="group relative z-30">
-            <Button className="bg-blue-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md">
-              <Plus className="h-4 w-4" />
-              行政办理
-              <ChevronDown className="h-4 w-4 transition-transform duration-200 group-hover:rotate-180 group-focus-within:rotate-180" />
+          {section === 'dormitory' && (
+            <>
+              <Button asChild className="bg-blue-600 hover:bg-blue-700">
+                <a href="/dormitory" target="_blank" rel="noopener noreferrer">
+                  <Plus className="h-4 w-4" />
+                  住宿申请
+                </a>
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!canExportDormitory(selectedRecord)}
+                onClick={() => selectedRecord && exportRecord(selectedRecord)}
+              >
+                <Download className="h-4 w-4" />
+                导出申请表
+              </Button>
+            </>
+          )}
+          {section === 'water-meter' && (
+            <Button asChild className="bg-blue-600 hover:bg-blue-700">
+              <Link href="/water-meter" target="_blank">
+                <Droplets className="h-4 w-4" />
+                水费登记
+              </Link>
             </Button>
-            <div className="pointer-events-none absolute right-0 top-full w-[520px] max-w-[calc(100vw-2rem)] origin-top-right translate-y-1 pt-2 opacity-0 transition-all duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 group-focus-within:opacity-100">
-              <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <a
-                    href="/dormitory"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-100 hover:shadow-sm"
-                  >
-                    <Plus className="h-4 w-4" />
-                    住宿申请
-                  </a>
-                  <Link
-                    href="/water-meter"
-                    target="_blank"
-                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
-                  >
-                    <Droplets className="h-4 w-4" />
-                    水费登记
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={openWaterRecords}
-                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
-                  >
-                    <Droplets className="h-4 w-4" />
-                    水表记录
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRoomsOpen(true)}
-                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
-                  >
-                    <DoorOpen className="h-4 w-4" />
-                    房号管理
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBedsOpen(true)}
-                    className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-sm"
-                  >
-                    <BedDouble className="h-4 w-4" />
-                    床号管理
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            disabled={!canExportDormitory(selectedRecord)}
-            onClick={() => selectedRecord && exportRecord(selectedRecord)}
-          >
-            <Download className="h-4 w-4" />
-            导出申请表
-          </Button>
+          )}
         </div>
       </div>
 
+      {section === 'dormitory' && (
+      <>
       <div className="mb-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_auto] md:items-end">
           <div className="space-y-1.5">
@@ -1592,6 +1574,322 @@ export default function AdministrationPage() {
           </Button>
         </div>
       </div>
+      </>
+      )}
+
+      {section === 'rooms' && (
+        <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+          <div className="mb-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <DoorOpen className="h-4 w-4 text-blue-600" />
+              房号管理
+            </div>
+            <p className="mt-1 text-sm text-slate-500">维护宿舍房号、可住人数和寝室类型，用于入住分配和水表登记。</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[1fr_120px_150px_1fr_auto] md:items-end">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">房号</label>
+              <Input value={newRoomNo} onChange={(event) => setNewRoomNo(event.target.value)} placeholder="例如：A栋302" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">可住人数</label>
+              <Input value={newRoomCapacity} onChange={(event) => setNewRoomCapacity(event.target.value)} placeholder="例如：4" inputMode="numeric" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">寝室类型</label>
+              <Select value={newRoomType} onValueChange={setNewRoomType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {roomTypeOptions.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">备注</label>
+              <Input value={newRoomRemark} onChange={(event) => setNewRoomRemark(event.target.value)} placeholder="可填写其他备注" />
+            </div>
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => void addRoom()} disabled={roomSaving}>
+              {roomSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              添加房号
+            </Button>
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-100">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50">
+                  <TableHead>房号</TableHead>
+                  <TableHead>已住/可住</TableHead>
+                  <TableHead>床位数</TableHead>
+                  <TableHead>寝室类型</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>备注</TableHead>
+                  <TableHead className="w-48">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rooms.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500">
+                      暂无房号
+                    </TableCell>
+                  </TableRow>
+                )}
+                {rooms.map((room) => (
+                  <TableRow key={room.id}>
+                    <TableCell className="font-medium">{room.roomNo}</TableCell>
+                    <TableCell>{room.occupiedCount}/{room.capacity || room.bedCount || '-'}</TableCell>
+                    <TableCell>{room.bedCount}</TableCell>
+                    <TableCell>{normalizeRoomType(room.roomType)}</TableCell>
+                    <TableCell>
+                      <span className={cn('inline-flex rounded-md px-2 py-1 text-xs font-medium ring-1', room.isFull ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-emerald-50 text-emerald-700 ring-emerald-200')}>
+                        {room.isFull ? '已住满' : '未住满'}
+                      </span>
+                    </TableCell>
+                    <TableCell>{display(room.remark)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => void openRoomDetail(room)}>
+                          详细
+                        </button>
+                        <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-slate-700 hover:text-slate-950" onClick={() => openEditRoom(room)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                          修改
+                        </button>
+                        <button type="button" className="inline-flex items-center gap-1 text-sm font-medium text-red-600 hover:text-red-700" onClick={() => void deleteRoom(room)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                          删除
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
+      {section === 'beds' && (
+        <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+          <div className="mb-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+              <BedDouble className="h-4 w-4 text-blue-600" />
+              床号管理
+            </div>
+            <p className="mt-1 text-sm text-slate-500">按房号维护床位，已入住床位会显示当前入住人员。</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">房号</label>
+              <Select value={bedRoomId} onValueChange={setBedRoomId}>
+                <SelectTrigger><SelectValue placeholder="请选择房号" /></SelectTrigger>
+                <SelectContent>
+                  {rooms.map((room) => (
+                    <SelectItem key={room.id} value={String(room.id)}>
+                      {room.roomNo}{room.roomType ? ` / ${room.roomType}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">床号</label>
+              <Input value={newBedNo} onChange={(event) => setNewBedNo(event.target.value)} placeholder="例如：1床" />
+            </div>
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => void addBed()} disabled={bedSaving}>
+              {bedSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              添加床号
+            </Button>
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-100">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50">
+                  <TableHead>房号</TableHead>
+                  <TableHead>床号</TableHead>
+                  <TableHead>入住人</TableHead>
+                  <TableHead className="w-24">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {!bedRoomId && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="h-24 text-center text-sm text-slate-500">
+                      请选择房号
+                    </TableCell>
+                  </TableRow>
+                )}
+                {bedRoomId && managementBeds.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="h-24 text-center text-sm text-slate-500">
+                      当前房间暂无床号
+                    </TableCell>
+                  </TableRow>
+                )}
+                {managementBeds.map((bed) => (
+                  <TableRow key={bed.id}>
+                    <TableCell>{bed.roomNo}</TableCell>
+                    <TableCell className="font-medium">{bed.bedNo}</TableCell>
+                    <TableCell>{display(bed.occupiedByName)}</TableCell>
+                    <TableCell>
+                      <button
+                        type="button"
+                        className={cn(
+                          'inline-flex items-center gap-1 text-sm font-medium',
+                          bed.occupiedRecordId ? 'cursor-not-allowed text-slate-300' : 'text-red-600 hover:text-red-700',
+                        )}
+                        disabled={Boolean(bed.occupiedRecordId)}
+                        onClick={() => void deleteBed(bed)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        删除
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
+      {section === 'water-meter' && (
+        <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+                <Droplets className="h-4 w-4 text-cyan-600" />
+                水表记录
+              </div>
+              <p className="mt-1 text-sm text-slate-500">查看移动端提交的水费登记记录，导出时只导出所选月份。</p>
+            </div>
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={exportWaterRecords}>
+              <Download className="h-4 w-4" />
+              导出所选月份
+            </Button>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[180px_180px_auto_auto] lg:items-end">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">房号</label>
+              <Select value={waterRoomFilter} onValueChange={setWaterRoomFilter}>
+                <SelectTrigger><SelectValue placeholder="全部房号" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部房号</SelectItem>
+                  {rooms.map((room) => (
+                    <SelectItem key={room.id} value={room.roomNo}>{room.roomNo}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">导出月份</label>
+              <Input type="month" value={waterExportMonth} onChange={(event) => setWaterExportMonth(event.target.value)} />
+            </div>
+            <Button variant="outline" onClick={() => { setWaterRoomFilter('all'); setWaterExportMonth(currentMonth()); }}>
+              重置
+            </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => void loadWaterRecords()} disabled={waterLoading}>
+              {waterLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              查询
+            </Button>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">记录数</p>
+              <p className="mt-1 text-xl font-semibold text-slate-950">{waterSummary.total}</p>
+            </div>
+            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">本次用水量合计</p>
+              <p className="mt-1 text-xl font-semibold text-slate-950">{waterSummary.totalUsage}</p>
+            </div>
+            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">水费金额合计</p>
+              <p className="mt-1 text-xl font-semibold text-slate-950">¥{waterSummary.totalFee}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {waterLoading && (
+              <div className="flex h-24 items-center justify-center rounded-lg border border-slate-100 text-sm text-slate-500">
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  正在加载水表记录...
+                </span>
+              </div>
+            )}
+            {!waterLoading && waterMonthGroups.length === 0 && (
+              <div className="flex h-24 items-center justify-center rounded-lg border border-slate-100 text-sm text-slate-500">
+                暂无水表记录
+              </div>
+            )}
+            {!waterLoading && waterMonthGroups.length > 0 && (
+              <Accordion
+                key={waterMonthGroups.map((group) => group.month).join('|')}
+                type="multiple"
+                defaultValue={waterMonthGroups.slice(0, 1).map((group) => group.month)}
+                className="space-y-3"
+              >
+                {waterMonthGroups.map((group) => (
+                  <AccordionItem key={group.month} value={group.month} className="rounded-lg border border-slate-100 bg-white">
+                    <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-left">
+                        <span className="text-base font-semibold text-slate-950">{group.month}</span>
+                        <span className="text-sm font-normal text-slate-500">{group.records.length} 条记录</span>
+                        <span className="text-sm font-normal text-slate-500">用水量 {group.usage}</span>
+                        <span className="text-sm font-normal text-slate-500">水费 ¥{group.fee}</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="px-0 pb-0">
+                      <div className="overflow-x-auto border-t border-slate-100">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-slate-50">
+                              <TableHead>序号</TableHead>
+                              <TableHead>房号</TableHead>
+                              <TableHead>登记日期</TableHead>
+                              <TableHead>上次读数</TableHead>
+                              <TableHead>本次读数</TableHead>
+                              <TableHead>本次用水量</TableHead>
+                              <TableHead>单价</TableHead>
+                              <TableHead>金额</TableHead>
+                              <TableHead>登记人</TableHead>
+                              <TableHead>备注</TableHead>
+                              <TableHead>提交时间</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {group.records.map((record, index) => (
+                              <TableRow key={record.id}>
+                                <TableCell>{index + 1}</TableCell>
+                                <TableCell className="font-medium">{record.roomNo}</TableCell>
+                                <TableCell>{formatDate(record.readingDate)}</TableCell>
+                                <TableCell>{display(record.previousReadingText)}</TableCell>
+                                <TableCell>{record.currentReadingText}</TableCell>
+                                <TableCell>{display(record.usageAmount)}</TableCell>
+                                <TableCell>{display(record.unitPrice)}</TableCell>
+                                <TableCell>{record.feeAmount === null ? '-' : `¥${record.feeAmount}`}</TableCell>
+                                <TableCell>{display(record.recorderName)}</TableCell>
+                                <TableCell>{display(record.remark)}</TableCell>
+                                <TableCell>{formatDateTime(record.createdAt)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            )}
+          </div>
+        </div>
+      )}
 
       <Dialog open={roomsOpen} onOpenChange={setRoomsOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">

@@ -374,12 +374,52 @@ export const navMenuItems: NavMenuItem[] = [
     label: '组织人事', 
     icon: 'Building',
     children: [
-      { key: 'usermanage', label: '用户管理', icon: 'UserCog' },
-      { key: 'personnel', label: '人事管理', icon: 'Users' },
+      {
+        key: 'personnel',
+        label: '人事管理',
+        icon: 'Users',
+        children: [
+          { key: 'personnel-onboarding', label: '入职登记', icon: 'Users' },
+          { key: 'personnel-social-security', label: '社保管理', icon: 'Shield' },
+          { key: 'personnel-social-security-purchase', label: '购买社保', icon: 'Shield' },
+          { key: 'personnel-regularization', label: '转正申请', icon: 'CheckCircle' },
+          { key: 'personnel-work-certificate', label: '工作证明', icon: 'FileText' },
+          { key: 'personnel-resignation', label: '离职申请', icon: 'FileText' },
+          { key: 'personnel-resignation-certificate', label: '离职证明', icon: 'FileText' },
+          { key: 'personnel-labor-termination', label: '解除劳动合同', icon: 'ClipboardList' },
+        ],
+      },
       { key: 'human-resources', label: '人力资源', icon: 'Briefcase' },
-      { key: 'administration', label: '行政管理', icon: 'Home' },
-      { key: 'assets', label: '资产管理', icon: 'Folder' },
-      { key: 'salary', label: '工资工时查询', icon: 'Clock' },
+      {
+        key: 'administration',
+        label: '行政管理',
+        icon: 'Home',
+        children: [
+          { key: 'administration-dormitory', label: '住宿申请', icon: 'Home' },
+          { key: 'administration-rooms', label: '房号管理', icon: 'Home' },
+          { key: 'administration-beds', label: '床号管理', icon: 'Home' },
+          { key: 'administration-water-meter', label: '水表记录', icon: 'Home' },
+        ],
+      },
+      {
+        key: 'assets',
+        label: '资产管理',
+        icon: 'Folder',
+        children: [
+          { key: 'assets-overview', label: '资产总览', icon: 'Folder' },
+        ],
+      },
+      {
+        key: 'salary',
+        label: '工资工时查询',
+        icon: 'Clock',
+        children: [
+          { key: 'salary-employees', label: '员工管理', icon: 'Users' },
+          { key: 'salary-detail', label: '工资明细', icon: 'DollarSign' },
+          { key: 'salary-workhours', label: '工时记录', icon: 'Clock' },
+          { key: 'salary-attendance', label: '打卡记录', icon: 'CheckCircle' },
+        ],
+      },
     ]
   },
   
@@ -388,6 +428,7 @@ export const navMenuItems: NavMenuItem[] = [
     label: '系统管理', 
     icon: 'Settings',
     children: [
+      { key: 'usermanage', label: '用户管理', icon: 'UserCog' },
       { key: 'taskmanage', label: '任务管理', icon: 'ClipboardList' },
       { key: 'todo', label: '待办事项', icon: 'CheckSquare' },
       { key: 'distribution', label: '分销达人', icon: 'Share2' },

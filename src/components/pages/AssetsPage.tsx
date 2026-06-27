@@ -77,7 +77,11 @@ interface Asset {
   claim_time?: string;
 }
 
-export function AssetsPage() {
+interface AssetsPageProps {
+  selectedType?: string;
+}
+
+export function AssetsPage({ selectedType = 'all' }: AssetsPageProps) {
   const [assetList, setAssetList] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -123,6 +127,9 @@ export function AssetsPage() {
       const data = await response.json();
       if (data.success) {
         setAssetList(data.data);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('assets-updated'));
+        }
       }
     } catch (error) {
       console.error('Failed to fetch assets:', error);
@@ -135,6 +142,10 @@ export function AssetsPage() {
   useEffect(() => {
     fetchAssets();
   }, []);
+
+  useEffect(() => {
+    setFilterType(selectedType || 'all');
+  }, [selectedType]);
 
   const getStatusVariant = (status: string) => {
     switch (status) {
@@ -422,6 +433,11 @@ export function AssetsPage() {
     .filter(group => group.assets.length > 0);
 
   const defaultAssetGroupValues = assetGroups.map(group => group.value);
+  const isSpecificTypePage = selectedType !== 'all';
+  const pageTitle = isSpecificTypePage ? `${selectedType}资产` : '资产管理';
+  const displayedAssetTypeCounts = isSpecificTypePage
+    ? assetTypeCounts.filter(type => type.value === selectedType)
+    : assetTypeCounts;
 
   const renderAssetTable = (assets: Asset[]) => (
     <div className="overflow-x-auto">
@@ -908,7 +924,7 @@ export function AssetsPage() {
     <div className="p-4 md:p-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <h1 className="text-2xl font-semibold text-slate-800">资产管理</h1>
+        <h1 className="text-2xl font-semibold text-slate-800">{pageTitle}</h1>
         <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3">
           {/* 搜索框 */}
           <Input
@@ -917,20 +933,21 @@ export function AssetsPage() {
             onChange={(e) => setSearchKeyword(e.target.value)}
             className="w-full sm:w-48"
           />
-          {/* 类型筛选 */}
-          <Select value={filterType} onValueChange={setFilterType}>
-            <SelectTrigger className="w-full sm:w-32">
-              <SelectValue placeholder="全部类型" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部类型</SelectItem>
-              {assetTypeFilterOptions.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  {type.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!isSpecificTypePage && (
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="w-full sm:w-32">
+                <SelectValue placeholder="全部类型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部类型</SelectItem>
+                {assetTypeFilterOptions.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button
             variant="outline"
             className="h-9 whitespace-nowrap"
@@ -1203,17 +1220,19 @@ export function AssetsPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {assetTypeCounts.map((type) => (
+        {displayedAssetTypeCounts.map((type) => (
           <Card
             key={type.value}
             role="button"
             tabIndex={0}
-            className={`cursor-pointer transition-colors ${
+            className={`transition-colors ${
               filterType === type.value ? 'border-blue-500 bg-blue-50' : 'hover:border-blue-300'
             }`}
-            onClick={() => setFilterType(type.value)}
+            onClick={() => {
+              if (!isSpecificTypePage) setFilterType(type.value);
+            }}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
+              if (!isSpecificTypePage && (event.key === 'Enter' || event.key === ' ')) {
                 event.preventDefault();
                 setFilterType(type.value);
               }
@@ -1236,7 +1255,7 @@ export function AssetsPage() {
         <CardHeader>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>资产列表 ({filteredAssets.length})</CardTitle>
-            {filterType !== 'all' && (
+            {filterType !== 'all' && !isSpecificTypePage && (
               <Button variant="outline" size="sm" onClick={() => setFilterType('all')}>
                 查看全部分类
               </Button>

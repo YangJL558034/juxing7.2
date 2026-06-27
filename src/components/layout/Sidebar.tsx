@@ -36,6 +36,8 @@ import {
   User,
   Bell,
   Briefcase,
+  Home,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatChinaTime } from '@/lib/china-time';
@@ -87,6 +89,8 @@ const iconMap: Record<string, React.ElementType> = {
   Bot,
   Bell,
   Briefcase,
+  Home,
+  Mail,
 };
 
 interface SidebarProps {
@@ -117,9 +121,22 @@ const modulePermissionMap: Record<string, string> = {
   'generate': 'generate',
   'ai-chat': 'ai-chat',
   'assets': 'assets',
+  'assets-overview': 'assets',
   'usermanage': 'usermanage',
   'personnel': 'personnel',
+  'personnel-onboarding': 'personnel',
+  'personnel-social-security': 'personnel',
+  'personnel-social-security-purchase': 'personnel',
+  'personnel-regularization': 'personnel',
+  'personnel-work-certificate': 'personnel',
+  'personnel-resignation': 'personnel',
+  'personnel-resignation-certificate': 'personnel',
+  'personnel-labor-termination': 'personnel',
   'administration': 'administration',
+  'administration-dormitory': 'administration',
+  'administration-rooms': 'administration',
+  'administration-beds': 'administration',
+  'administration-water-meter': 'administration',
   'human-resources': 'human-resources',
   'settings': 'settings',
   'purchase-requests': 'purchase-requests',
@@ -127,6 +144,10 @@ const modulePermissionMap: Record<string, string> = {
   'approval-center': 'approval-center',
   'finance-review': 'finance-review',
   'salary': 'salary',
+  'salary-employees': 'salary',
+  'salary-detail': 'salary',
+  'salary-workhours': 'salary',
+  'salary-attendance': 'salary',
   'smtp': 'smtp',
   'operation-logs': 'operation-logs',
   'notification-center': 'notification-center',
@@ -134,6 +155,7 @@ const modulePermissionMap: Record<string, string> = {
 
 const hasPermission = (key: string, permissions: string[], isAdmin: boolean): boolean => {
   if (isAdmin) return true;
+  if (key === 'assets-overview' || key.startsWith('assets-type:')) return permissions.includes('assets');
   const permissionKey = modulePermissionMap[key];
   return !permissionKey || permissions.includes(permissionKey);
 };
@@ -309,7 +331,34 @@ export function Sidebar({
   const [aiLoading, setAiLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string>('');
+  const [assetTypeMenuItems, setAssetTypeMenuItems] = useState<NavMenuItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const loadAssetTypes = async () => {
+      try {
+        const response = await fetch('/api/assets', { cache: 'no-store' });
+        const result = await response.json().catch(() => ({})) as { success?: boolean; data?: Array<{ type?: string | null }> };
+        if (!response.ok || !result.success) return;
+
+        const uniqueTypes = Array.from(new Set((result.data || [])
+          .map((asset) => String(asset.type || '').trim())
+          .filter(Boolean)));
+
+        setAssetTypeMenuItems(uniqueTypes.map((type) => ({
+          key: `assets-type:${encodeURIComponent(type)}`,
+          label: type,
+          icon: 'Folder',
+        })));
+      } catch (error) {
+        console.error('加载资产类型导航失败:', error);
+      }
+    };
+
+    void loadAssetTypes();
+    window.addEventListener('assets-updated', loadAssetTypes);
+    return () => window.removeEventListener('assets-updated', loadAssetTypes);
+  }, []);
 
   // AI对话自动滚动
   useEffect(() => {
@@ -426,7 +475,24 @@ export function Sidebar({
     return formatChinaTime(date);
   };
 
-  const filteredMenuItems = navMenuItems.filter(item => {
+  const menuItemsWithAssetTypes = navMenuItems.map((item) => {
+    if (item.key !== 'organization') return item;
+    return {
+      ...item,
+      children: item.children?.map((child) => {
+        if (child.key !== 'assets') return child;
+        return {
+          ...child,
+          children: [
+            { key: 'assets-overview', label: '资产总览', icon: 'Folder' },
+            ...assetTypeMenuItems,
+          ],
+        };
+      }),
+    };
+  });
+
+  const filteredMenuItems = menuItemsWithAssetTypes.filter(item => {
     if (item.children) {
       return hasAnyChildPermission(item.children, permissions, isAdmin);
     }

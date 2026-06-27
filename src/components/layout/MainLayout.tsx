@@ -15,7 +15,7 @@ import { SettingsPage } from '@/components/pages/SettingsPage';
 import TaskManagePage from '@/components/pages/TaskManagePage';
 import DistributionPage from '@/components/pages/DistributionPage';
 import { GeneratePage } from '@/components/pages/GeneratePage';
-import SalaryPage from '@/components/pages/SalaryPage';
+import SalaryPage, { type SalarySectionKey } from '@/components/pages/SalaryPage';
 import ContactsPage from '@/components/pages/ContactsPage';
 import ContractsPage from '@/components/pages/ContractsPage';
 import InvoicesPage from '@/components/pages/InvoicesPage';
@@ -25,8 +25,8 @@ import FinancePage from '@/components/pages/FinancePage';
 import PurchaseRequestsPage from '@/components/pages/PurchaseRequestsPage';
 import ExpenseClaimsPage from '@/components/pages/ExpenseClaimsPage';
 import OrganizationPage from '@/components/pages/OrganizationPage';
-import PersonnelPage from '@/components/pages/PersonnelPage';
-import AdministrationPage from '@/components/pages/AdministrationPage';
+import PersonnelPage, { type PersonnelSectionKey } from '@/components/pages/PersonnelPage';
+import AdministrationPage, { type AdministrationSectionKey } from '@/components/pages/AdministrationPage';
 import HumanResourcesPage from '@/components/pages/HumanResourcesPage';
 import PermissionPage from '@/components/pages/PermissionPage';
 import ApprovalCenter from '@/components/pages/ApprovalCenter';
@@ -52,12 +52,29 @@ const pageNames: Record<string, string> = {
   finance: '财务管理',
   tasks: '任务管理',
   salary: '工资管理',
+  'salary-employees': '员工管理',
+  'salary-detail': '工资明细',
+  'salary-workhours': '工时记录',
+  'salary-attendance': '打卡记录',
   generate: '工资生成',
   'ai-chat': 'AI聊天',
   assets: '资产管理',
+  'assets-overview': '资产总览',
   organization: '组织管理',
   personnel: '人事管理',
+  'personnel-onboarding': '入职登记',
+  'personnel-social-security': '社保管理',
+  'personnel-social-security-purchase': '购买社保',
+  'personnel-regularization': '转正申请',
+  'personnel-work-certificate': '工作证明',
+  'personnel-resignation': '离职申请',
+  'personnel-resignation-certificate': '离职证明',
+  'personnel-labor-termination': '解除劳动合同',
   administration: '行政管理',
+  'administration-dormitory': '住宿申请',
+  'administration-rooms': '房号管理',
+  'administration-beds': '床号管理',
+  'administration-water-meter': '水表记录',
   'human-resources': '人力资源',
   permission: '权限管理',
   'purchase-requests': '采购申请',
@@ -73,8 +90,52 @@ const pageNames: Record<string, string> = {
 
 const pagePermissionMap: Record<string, string> = {
   personnel: 'personnel',
+  'personnel-onboarding': 'personnel',
+  'personnel-social-security': 'personnel',
+  'personnel-social-security-purchase': 'personnel',
+  'personnel-regularization': 'personnel',
+  'personnel-work-certificate': 'personnel',
+  'personnel-resignation': 'personnel',
+  'personnel-resignation-certificate': 'personnel',
+  'personnel-labor-termination': 'personnel',
+  assets: 'assets',
+  'assets-overview': 'assets',
   administration: 'administration',
+  'administration-dormitory': 'administration',
+  'administration-rooms': 'administration',
+  'administration-beds': 'administration',
+  'administration-water-meter': 'administration',
   'human-resources': 'human-resources',
+  salary: 'salary',
+  'salary-employees': 'salary',
+  'salary-detail': 'salary',
+  'salary-workhours': 'salary',
+  'salary-attendance': 'salary',
+};
+
+const personnelSectionMap: Record<string, { section: PersonnelSectionKey; label: string }> = {
+  'personnel-onboarding': { section: 'onboarding', label: '入职登记' },
+  'personnel-social-security': { section: 'social-security', label: '社保管理' },
+  'personnel-social-security-purchase': { section: 'social-security-purchase', label: '购买社保' },
+  'personnel-regularization': { section: 'regularization', label: '转正申请' },
+  'personnel-work-certificate': { section: 'work-certificate', label: '工作证明' },
+  'personnel-resignation': { section: 'resignation', label: '离职申请' },
+  'personnel-resignation-certificate': { section: 'resignation-certificate', label: '离职证明' },
+  'personnel-labor-termination': { section: 'labor-termination', label: '解除劳动合同' },
+};
+
+const administrationSectionMap: Record<string, { section: AdministrationSectionKey; label: string }> = {
+  'administration-dormitory': { section: 'dormitory', label: '住宿申请' },
+  'administration-rooms': { section: 'rooms', label: '房号管理' },
+  'administration-beds': { section: 'beds', label: '床号管理' },
+  'administration-water-meter': { section: 'water-meter', label: '水表记录' },
+};
+
+const salarySectionMap: Record<string, { section: SalarySectionKey; label: string }> = {
+  'salary-employees': { section: 'employees', label: '员工管理' },
+  'salary-detail': { section: 'salary', label: '工资明细' },
+  'salary-workhours': { section: 'workhours', label: '工时记录' },
+  'salary-attendance': { section: 'attendance', label: '打卡记录' },
 };
 
 interface NotificationItem {
@@ -94,6 +155,11 @@ interface MainLayoutProps {
 export function MainLayout({ user }: MainLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [activePage, setActivePage] = useState<PageKey>('dashboard');
+  const [activeNavKey, setActiveNavKey] = useState<string>('dashboard');
+  const [activePersonnelSection, setActivePersonnelSection] = useState<PersonnelSectionKey>('onboarding');
+  const [activeAdministrationSection, setActiveAdministrationSection] = useState<AdministrationSectionKey>('dormitory');
+  const [activeSalarySection, setActiveSalarySection] = useState<SalarySectionKey>('salary');
+  const [activeAssetsType, setActiveAssetsType] = useState<string>('all');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [permissions, setPermissions] = useState<string[]>([]);
@@ -172,16 +238,129 @@ export function MainLayout({ user }: MainLayoutProps) {
   // 检查是否有权限访问某页面
   const hasPermission = useCallback((page: string): boolean => {
     if (user?.role === 'admin') return true;
+    if (page.startsWith('assets-type:')) return permissions.includes('assets');
     return permissions.includes(pagePermissionMap[page] || page);
   }, [permissions, user?.role]);
 
   // 导航时检查权限
   const handleNavigate = useCallback((key: string) => {
+    const personnelSection = personnelSectionMap[key];
+    if (personnelSection) {
+      if (!hasPermission(key)) {
+        alert('您没有权限访问此功能，请联系管理员开通');
+        return;
+      }
+
+      setActivePage('personnel');
+      setActiveNavKey(key);
+      setActivePersonnelSection(personnelSection.section);
+
+      if (user?.id) {
+        logOperation({
+          module: 'personnel',
+          action: LogActions.VIEW,
+          details: { message: `访问页面: 人事管理 / ${personnelSection.label}` },
+          userId: user.id,
+          userName: user.name,
+        }).catch(err => console.error('记录导航日志失败:', err));
+      }
+      return;
+    }
+
+    const administrationSection = administrationSectionMap[key];
+    if (administrationSection) {
+      if (!hasPermission(key)) {
+        alert('您没有权限访问此功能，请联系管理员开通');
+        return;
+      }
+
+      setActivePage('administration');
+      setActiveNavKey(key);
+      setActiveAdministrationSection(administrationSection.section);
+
+      if (user?.id) {
+        logOperation({
+          module: 'administration',
+          action: LogActions.VIEW,
+          details: { message: `访问页面: 行政管理 / ${administrationSection.label}` },
+          userId: user.id,
+          userName: user.name,
+        }).catch(err => console.error('记录导航日志失败:', err));
+      }
+      return;
+    }
+
+    const salarySection = salarySectionMap[key];
+    if (salarySection) {
+      if (!hasPermission(key)) {
+        alert('您没有权限访问此功能，请联系管理员开通');
+        return;
+      }
+
+      setActivePage('salary');
+      setActiveNavKey(key);
+      setActiveSalarySection(salarySection.section);
+
+      if (user?.id) {
+        logOperation({
+          module: 'salary',
+          action: LogActions.VIEW,
+          details: { message: `访问页面: 工资工时查询 / ${salarySection.label}` },
+          userId: user.id,
+          userName: user.name,
+        }).catch(err => console.error('记录导航日志失败:', err));
+      }
+      return;
+    }
+
+    if (key === 'assets-overview' || key.startsWith('assets-type:')) {
+      if (!hasPermission(key)) {
+        alert('您没有权限访问此功能，请联系管理员开通');
+        return;
+      }
+
+      const assetType = key.startsWith('assets-type:') ? decodeURIComponent(key.slice('assets-type:'.length)) : 'all';
+      setActivePage('assets');
+      setActiveNavKey(key);
+      setActiveAssetsType(assetType);
+
+      if (user?.id) {
+        logOperation({
+          module: 'assets',
+          action: LogActions.VIEW,
+          details: { message: `访问页面: 资产管理 / ${assetType === 'all' ? '资产总览' : assetType}` },
+          userId: user.id,
+          userName: user.name,
+        }).catch(err => console.error('记录导航日志失败:', err));
+      }
+      return;
+    }
+
     if (!hasPermission(key)) {
       alert('您没有权限访问此功能，请联系管理员开通');
       return;
     }
     setActivePage(key as PageKey);
+    setActiveNavKey(
+      key === 'personnel'
+        ? 'personnel-onboarding'
+        : key === 'assets'
+          ? 'assets-overview'
+        : key === 'administration'
+          ? 'administration-dormitory'
+          : key === 'salary'
+            ? 'salary-detail'
+            : key,
+    );
+    if (key === 'personnel') {
+      setActivePersonnelSection('onboarding');
+    } else if (key === 'assets') {
+      setActiveAssetsType('all');
+    } else if (key === 'administration') {
+      setActiveAdministrationSection('dormitory');
+    } else if (key === 'salary') {
+      setActiveSalarySection('salary');
+    }
     
     // 记录页面访问日志
     if (user?.id) {
@@ -224,19 +403,19 @@ export function MainLayout({ user }: MainLayoutProps) {
       case 'tasks':
         return <TasksPage />;
       case 'salary':
-        return <SalaryPage />;
+        return <SalaryPage section={activeSalarySection} />;
       case 'generate':
         return <GeneratePage />;
       case 'ai-chat':
         return <AIChatPage user={user} />;
       case 'assets':
-        return <AssetsPage />;
+        return <AssetsPage selectedType={activeAssetsType} />;
       case 'organization':
         return <OrganizationPage />;
       case 'personnel':
-        return <PersonnelPage />;
+        return <PersonnelPage section={activePersonnelSection} />;
       case 'administration':
-        return <AdministrationPage />;
+        return <AdministrationPage section={activeAdministrationSection} />;
       case 'human-resources':
         return <HumanResourcesPage />;
       case 'permission':
@@ -314,7 +493,7 @@ export function MainLayout({ user }: MainLayoutProps) {
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        activeKey={activePage}
+        activeKey={activeNavKey}
         onNavigate={handleNavigate}
         isMobile={false}
         permissions={permissions}
@@ -325,7 +504,7 @@ export function MainLayout({ user }: MainLayoutProps) {
       <Sidebar
         collapsed={false}
         onToggle={() => {}}
-        activeKey={activePage}
+        activeKey={activeNavKey}
         onNavigate={handleNavigate}
         isMobile={true}
         mobileOpen={mobileSidebarOpen}

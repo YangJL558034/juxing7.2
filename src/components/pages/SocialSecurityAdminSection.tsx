@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { Download, Eye, FileText, Loader2, Pencil, RefreshCcw, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Download, Eye, FileCheck2, FileText, Loader2, Pencil, RefreshCcw, RotateCcw, Search, ShieldCheck, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -27,6 +27,7 @@ import {
 } from '@/lib/social-security-records';
 import type { SocialSecurityDocumentType, SocialSecurityFormData, SocialSecurityRecord } from '@/types/social-security';
 import YearMonthGroupedTableBody from './YearMonthGroupedTableBody';
+import SocialSecurityPurchaseManager from './SocialSecurityPurchaseManager';
 
 interface ListResponse {
   success: boolean;
@@ -41,6 +42,7 @@ interface MutateResponse {
 }
 
 type ListMode = 'active' | 'deleted';
+type SocialSecurityAdminMode = 'applications' | 'purchase' | 'all';
 
 function display(value: unknown) {
   const text = String(value ?? '').trim();
@@ -98,7 +100,7 @@ function InfoGrid({ pairs }: { pairs: Array<[string, unknown]> }) {
   );
 }
 
-export default function SocialSecurityAdminSection() {
+export default function SocialSecurityAdminSection({ mode = 'all' }: { mode?: SocialSecurityAdminMode }) {
   const [records, setRecords] = useState<SocialSecurityRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -176,8 +178,29 @@ export default function SocialSecurityAdminSection() {
   };
 
   const exportRecord = (record: SocialSecurityRecord) => {
+    if (record.status === '待审核') {
+      alert('请先审核社保申请，再导出或打印');
+      return;
+    }
     window.open(`/api/social-security/${record.id}/export`, '_blank', 'noopener,noreferrer');
     setTimeout(() => void loadRecords(), 800);
+  };
+
+  const reviewRecord = async (record: SocialSecurityRecord) => {
+    const reviewerName = window.prompt(`请输入审核人姓名：${record.name}`, '')?.trim();
+    if (!reviewerName) return;
+    try {
+      const response = await fetch(`/api/social-security/${record.id}/review`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewerName }),
+      });
+      const result = await response.json().catch(() => ({})) as MutateResponse;
+      if (!response.ok || !result.success) throw new Error(result.error || '审核社保申请失败');
+      await loadRecords();
+    } catch (reviewError) {
+      alert(reviewError instanceof Error ? reviewError.message : '审核社保申请失败');
+    }
   };
 
   const deleteRecord = async (record: SocialSecurityRecord) => {
@@ -206,6 +229,8 @@ export default function SocialSecurityAdminSection() {
   const runSearch = () => setKeyword(keywordInput);
 
   return (
+    <>
+    {mode !== 'purchase' && (
     <div id="social-security-management" className="scroll-mt-24 mt-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
@@ -222,6 +247,14 @@ export default function SocialSecurityAdminSection() {
           <Button asChild variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50">
             <Link href="/social-security?type=waiver" target="_blank">自愿放弃社保声明</Link>
           </Button>
+          {mode === 'all' && (
+            <Button asChild variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+              <a href="#social-security-purchase-management">
+                <ShieldCheck className="h-4 w-4" />
+                购买社保
+              </a>
+            </Button>
+          )}
           <div className="flex h-9 items-center rounded-md border border-slate-200 bg-white px-2">
             <Search className="h-4 w-4 text-slate-400" />
             <input
@@ -289,12 +322,16 @@ export default function SocialSecurityAdminSection() {
             <TableRow>
               <TableHead>文件</TableHead>
               <TableHead>姓名</TableHead>
+              <TableHead>提交人</TableHead>
+              <TableHead>提交时间</TableHead>
               <TableHead>身份证</TableHead>
               <TableHead>手机号</TableHead>
               <TableHead>部门</TableHead>
               <TableHead>岗位</TableHead>
               <TableHead>入职日期</TableHead>
               <TableHead>状态</TableHead>
+              <TableHead>审核人</TableHead>
+              <TableHead>审核时间</TableHead>
               {listMode === 'deleted' && <TableHead>恢复截止</TableHead>}
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
@@ -302,7 +339,7 @@ export default function SocialSecurityAdminSection() {
           <YearMonthGroupedTableBody
             records={records}
             loading={loading}
-            colSpan={listMode === 'deleted' ? 10 : 9}
+            colSpan={listMode === 'deleted' ? 14 : 13}
             loadingText="正在加载社保申请..."
             emptyText={listMode === 'deleted' ? '暂无已删除社保申请' : '暂无社保申请记录'}
             getDate={(record) => record.createdAt}
@@ -310,12 +347,16 @@ export default function SocialSecurityAdminSection() {
               <TableRow key={record.id}>
                 <TableCell className="font-medium text-slate-900">{record.documentTitle}</TableCell>
                 <TableCell>{display(record.name)}</TableCell>
+                <TableCell>{display(record.submittedBy)}</TableCell>
+                <TableCell>{formatDateTime(record.submittedAt)}</TableCell>
                 <TableCell>{display(record.idCard)}</TableCell>
                 <TableCell>{display(record.phone)}</TableCell>
                 <TableCell>{display(record.department)}</TableCell>
                 <TableCell>{display(record.position)}</TableCell>
                 <TableCell>{formatDate(record.hireDate)}</TableCell>
                 <TableCell>{record.deletedAt ? '已删除' : record.status}</TableCell>
+                <TableCell>{display(record.reviewerName)}</TableCell>
+                <TableCell>{formatDateTime(record.reviewedAt)}</TableCell>
                 {listMode === 'deleted' && <TableCell>{formatDateTime(record.restoreUntil)}</TableCell>}
                 <TableCell className="text-right">
                   <div className="flex flex-wrap justify-end gap-2">
@@ -334,6 +375,12 @@ export default function SocialSecurityAdminSection() {
                           <Pencil className="h-4 w-4" />
                           修改
                         </Button>
+                        {record.status === '待审核' && (
+                          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => reviewRecord(record)}>
+                            <FileCheck2 className="h-4 w-4" />
+                            审核
+                          </Button>
+                        )}
                         <Button variant="outline" size="sm" onClick={() => exportRecord(record)}>
                           <Download className="h-4 w-4" />
                           导出
@@ -372,7 +419,10 @@ export default function SocialSecurityAdminSection() {
               ['社保局城市', viewTarget.data.bureauCity],
               ['鉴于原因', viewTarget.documentType === 'waiver' ? viewTarget.data.reason : ''],
               ['状态', viewTarget.deletedAt ? '已删除' : viewTarget.status],
+              ['提交人', viewTarget.submittedBy],
               ['创建时间', formatDateTime(viewTarget.createdAt)],
+              ['审核人', viewTarget.reviewerName],
+              ['审核时间', formatDateTime(viewTarget.reviewedAt)],
               ['导出时间', formatDateTime(viewTarget.exportedAt)],
               ['删除时间', formatDateTime(viewTarget.deletedAt)],
               ['恢复截止', formatDateTime(viewTarget.restoreUntil)],
@@ -447,5 +497,8 @@ export default function SocialSecurityAdminSection() {
         </DialogContent>
       </Dialog>
     </div>
+    )}
+    {mode !== 'applications' && <SocialSecurityPurchaseManager />}
+    </>
   );
 }
