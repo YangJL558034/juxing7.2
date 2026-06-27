@@ -19,6 +19,12 @@ interface MobileItemClaimsProps {
   canManage: boolean;
 }
 
+interface MutateItemResponse {
+  success: boolean;
+  error?: string;
+  message?: string;
+}
+
 interface MutateClaimResponse {
   success: boolean;
   error?: string;
@@ -32,6 +38,15 @@ const emptySummary: ItemInventorySummary = {
   claimedQuantity: 0,
   pendingQuantity: 0,
   totalValue: 0,
+};
+
+const emptyStockForm = {
+  name: '',
+  category: '',
+  unit: '个',
+  quantity: '',
+  unitPrice: '',
+  remark: '',
 };
 
 function display(value?: string | number | null) {
@@ -52,9 +67,12 @@ export default function MobileItemClaims({ canManage }: MobileItemClaimsProps) {
   const [summary, setSummary] = useState<ItemInventorySummary>(emptySummary);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [stocking, setStocking] = useState(false);
   const [reviewingId, setReviewingId] = useState<number | null>(null);
+  const [stockOpen, setStockOpen] = useState(false);
   const [claimOpen, setClaimOpen] = useState(false);
   const [error, setError] = useState('');
+  const [stockForm, setStockForm] = useState(emptyStockForm);
   const [claimForm, setClaimForm] = useState({
     itemId: '',
     quantity: '1',
@@ -105,6 +123,45 @@ export default function MobileItemClaims({ canManage }: MobileItemClaimsProps) {
   }, [claimForm.itemId, items]);
 
   const pendingClaims = useMemo(() => claims.filter((claim) => claim.status === '待审核'), [claims]);
+
+  const submitStock = async () => {
+    if (!stockForm.name.trim()) {
+      alert('请填写物品名称');
+      return;
+    }
+    if (!stockForm.quantity || Number(stockForm.quantity) <= 0) {
+      alert('请填写入库数量');
+      return;
+    }
+
+    setStocking(true);
+    try {
+      const response = await fetch('/api/item-inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: stockForm.name,
+          category: stockForm.category,
+          unit: stockForm.unit,
+          quantity: stockForm.quantity,
+          unitPrice: stockForm.unitPrice,
+          remark: stockForm.remark,
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as MutateItemResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '物品入库失败');
+      }
+      setStockForm(emptyStockForm);
+      setStockOpen(false);
+      await loadData();
+    } catch (stockError) {
+      alert(stockError instanceof Error ? stockError.message : '物品入库失败');
+    } finally {
+      setStocking(false);
+    }
+  };
 
   const submitClaim = async () => {
     if (!claimForm.itemId) {
@@ -209,20 +266,80 @@ export default function MobileItemClaims({ canManage }: MobileItemClaimsProps) {
             <Button
               variant="outline"
               className="h-12 rounded-2xl text-base font-semibold"
-              onClick={() => setClaimOpen(false)}
+              onClick={() => {
+                setStockOpen((current) => !current);
+                setClaimOpen(false);
+              }}
             >
               <PackageCheck className="mr-2 h-4 w-4" />
-              物品入口
+              物品入库
             </Button>
           )}
           <Button
             className="h-12 rounded-2xl bg-blue-600 text-base font-semibold hover:bg-blue-700"
-            onClick={() => setClaimOpen((current) => !current)}
+            onClick={() => {
+              setClaimOpen((current) => !current);
+              setStockOpen(false);
+            }}
           >
             <Plus className="mr-2 h-4 w-4" />
             物品领用申请
           </Button>
         </div>
+
+        {canManage && stockOpen && (
+          <div className="mt-3 space-y-3 rounded-2xl bg-slate-50 p-3">
+            <Input
+              className="h-12 rounded-2xl bg-white"
+              value={stockForm.name}
+              onChange={(event) => setStockForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="物品名称"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                className="h-12 rounded-2xl bg-white"
+                value={stockForm.category}
+                onChange={(event) => setStockForm((current) => ({ ...current, category: event.target.value }))}
+                placeholder="分类"
+              />
+              <Input
+                className="h-12 rounded-2xl bg-white"
+                value={stockForm.unit}
+                onChange={(event) => setStockForm((current) => ({ ...current, unit: event.target.value }))}
+                placeholder="单位"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                className="h-12 rounded-2xl bg-white"
+                type="number"
+                min="1"
+                value={stockForm.quantity}
+                onChange={(event) => setStockForm((current) => ({ ...current, quantity: event.target.value }))}
+                placeholder="入库数量"
+              />
+              <Input
+                className="h-12 rounded-2xl bg-white"
+                type="number"
+                min="0"
+                step="0.01"
+                value={stockForm.unitPrice}
+                onChange={(event) => setStockForm((current) => ({ ...current, unitPrice: event.target.value }))}
+                placeholder="单价"
+              />
+            </div>
+            <Textarea
+              className="min-h-20 rounded-2xl bg-white"
+              value={stockForm.remark}
+              onChange={(event) => setStockForm((current) => ({ ...current, remark: event.target.value }))}
+              placeholder="备注"
+            />
+            <Button className="h-12 w-full rounded-2xl bg-emerald-600 hover:bg-emerald-700" onClick={submitStock} disabled={stocking}>
+              {stocking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageCheck className="mr-2 h-4 w-4" />}
+              提交入库
+            </Button>
+          </div>
+        )}
 
         {claimOpen && (
           <div className="mt-3 space-y-3 rounded-2xl bg-slate-50 p-3">
