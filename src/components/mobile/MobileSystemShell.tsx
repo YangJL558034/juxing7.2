@@ -118,7 +118,7 @@ type MobileMenuGroup = {
 };
 
 const pageKeySet = new Set<string>(pageKeys);
-const publicMobilePages = new Set<PageKey>(['personnel']);
+const publicMobilePages = new Set<PageKey>(['personnel', 'salary']);
 
 const pageTitleMap: Record<PageKey, string> = {
   dashboard: '仪表盘',
@@ -319,7 +319,7 @@ function renderPage(
     case 'tasks':
       return <MobileBusinessPage moduleKey={activePage as MobileBusinessKey} />;
     case 'salary':
-      return <MobileSalaryPage />;
+      return <MobileSalaryPage user={user} canManage={Boolean(managementPermissions.salary)} />;
     case 'generate':
       return <MobileBusinessPage moduleKey="generate" />;
     case 'ai-chat':
@@ -522,7 +522,10 @@ export default function MobileSystemShell({ user }: { user?: AppUser }) {
       <main className="mobile-system-content app-animated-surface px-3 pb-[calc(env(safe-area-inset-bottom)+5.75rem)] pt-[calc(env(safe-area-inset-top)+4.65rem)]">
         {visibleItems.length || activePage === 'profile' ? (
           <div key={activePage} className="mobile-system-page animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {renderPage(activePage, user, navigateByKey, { personnel: hasModulePermission('personnel') })}
+            {renderPage(activePage, user, navigateByKey, {
+              personnel: hasModulePermission('personnel'),
+              salary: hasModulePermission('salary'),
+            })}
           </div>
         ) : (
           <div className="rounded-[30px] border border-white/70 bg-white/[0.85] p-6 text-center shadow-sm backdrop-blur">

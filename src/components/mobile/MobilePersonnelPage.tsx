@@ -436,12 +436,6 @@ export default function MobilePersonnelPage({ canManage = false }: { canManage?:
         )}
       </section>
 
-      {!canManage && (
-        <section className="rounded-[24px] border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-600 shadow-sm">
-          当前账号未分配人事管理权限，只能提交本人请假申请。管理员分配人事管理权限后，可在这里查看员工申请并审批。
-        </section>
-      )}
-
       {canManage && (
       <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex gap-2">
