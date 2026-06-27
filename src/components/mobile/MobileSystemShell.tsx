@@ -118,6 +118,7 @@ type MobileMenuGroup = {
 };
 
 const pageKeySet = new Set<string>(pageKeys);
+const publicMobilePages = new Set<PageKey>(['personnel']);
 
 const pageTitleMap: Record<PageKey, string> = {
   dashboard: '仪表盘',
@@ -291,7 +292,12 @@ function getIcon(iconName: string) {
   return iconMap[iconName] || FileText;
 }
 
-function renderPage(activePage: ActivePageKey, user?: AppUser, onNavigate?: (key: string) => void) {
+function renderPage(
+  activePage: ActivePageKey,
+  user?: AppUser,
+  onNavigate?: (key: string) => void,
+  managementPermissions: Partial<Record<PageKey, boolean>> = {},
+) {
   if (activePage === 'profile') {
     return <MobileProfilePage user={user} />;
   }
@@ -323,7 +329,7 @@ function renderPage(activePage: ActivePageKey, user?: AppUser, onNavigate?: (key
     case 'organization':
       return <MobileBusinessPage moduleKey="organization" />;
     case 'personnel':
-      return <MobilePersonnelPage />;
+      return <MobilePersonnelPage canManage={Boolean(managementPermissions.personnel)} />;
     case 'administration':
       return <MobileAdministrationPage />;
     case 'human-resources':
@@ -388,12 +394,17 @@ export default function MobileSystemShell({ user }: { user?: AppUser }) {
     fetchPermissions();
   }, [user]);
 
-  const hasPermission = useCallback(
+  const hasModulePermission = useCallback(
     (page: PageKey) => {
       if (user?.role === 'admin') return true;
       return permissions.includes(modulePermissionMap[page]);
     },
     [permissions, user?.role],
+  );
+
+  const canAccessPage = useCallback(
+    (page: PageKey) => publicMobilePages.has(page) || hasModulePermission(page),
+    [hasModulePermission],
   );
 
   const menuGroups = useMemo(() => flattenMobileMenu(navMenuItems), []);
@@ -402,10 +413,10 @@ export default function MobileSystemShell({ user }: { user?: AppUser }) {
     return menuGroups
       .map((group) => ({
         ...group,
-        items: group.items.filter((item) => hasPermission(item.key)),
+        items: group.items.filter((item) => canAccessPage(item.key)),
       }))
       .filter((group) => group.items.length > 0);
-  }, [hasPermission, menuGroups]);
+  }, [canAccessPage, menuGroups]);
 
   const filteredGroups = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -429,10 +440,10 @@ export default function MobileSystemShell({ user }: { user?: AppUser }) {
   useEffect(() => {
     if (!visibleItems.length || activePage === 'profile') return;
 
-    if (!hasPermission(activePage)) {
+    if (!canAccessPage(activePage)) {
       setActivePage(visibleItems[0].key);
     }
-  }, [activePage, hasPermission, visibleItems]);
+  }, [activePage, canAccessPage, visibleItems]);
 
   const activeItem = activePage === 'profile' ? undefined : visibleItems.find((item) => item.key === activePage);
   const activeTitle = activePage === 'profile' ? '我的' : activeItem?.label || pageTitleMap[activePage] || '移动端';
@@ -473,7 +484,7 @@ export default function MobileSystemShell({ user }: { user?: AppUser }) {
   };
 
   const canUseBottomItem = (key: ActivePageKey) => {
-    return key === 'profile' || (isPageKey(key) && hasPermission(key));
+    return key === 'profile' || (isPageKey(key) && canAccessPage(key));
   };
 
   return (
@@ -511,7 +522,7 @@ export default function MobileSystemShell({ user }: { user?: AppUser }) {
       <main className="mobile-system-content app-animated-surface px-3 pb-[calc(env(safe-area-inset-bottom)+5.75rem)] pt-[calc(env(safe-area-inset-top)+4.65rem)]">
         {visibleItems.length || activePage === 'profile' ? (
           <div key={activePage} className="mobile-system-page animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {renderPage(activePage, user, navigateByKey)}
+            {renderPage(activePage, user, navigateByKey, { personnel: hasModulePermission('personnel') })}
           </div>
         ) : (
           <div className="rounded-[30px] border border-white/70 bg-white/[0.85] p-6 text-center shadow-sm backdrop-blur">

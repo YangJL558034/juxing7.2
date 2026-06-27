@@ -70,6 +70,7 @@ const pageNames: Record<string, string> = {
   'personnel-resignation': '离职申请',
   'personnel-resignation-certificate': '离职证明',
   'personnel-labor-termination': '解除劳动合同',
+  'personnel-leave-request': '请假申请',
   administration: '行政管理',
   'administration-dormitory': '住宿申请',
   'administration-rooms': '房号管理',
@@ -98,6 +99,7 @@ const pagePermissionMap: Record<string, string> = {
   'personnel-resignation': 'personnel',
   'personnel-resignation-certificate': 'personnel',
   'personnel-labor-termination': 'personnel',
+  'personnel-leave-request': 'personnel',
   assets: 'assets',
   'assets-overview': 'assets',
   administration: 'administration',
@@ -122,6 +124,7 @@ const personnelSectionMap: Record<string, { section: PersonnelSectionKey; label:
   'personnel-resignation': { section: 'resignation', label: '离职申请' },
   'personnel-resignation-certificate': { section: 'resignation-certificate', label: '离职证明' },
   'personnel-labor-termination': { section: 'labor-termination', label: '解除劳动合同' },
+  'personnel-leave-request': { section: 'leave-request', label: '请假申请' },
 };
 
 const administrationSectionMap: Record<string, { section: AdministrationSectionKey; label: string }> = {

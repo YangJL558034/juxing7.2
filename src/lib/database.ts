@@ -584,6 +584,33 @@ export function initDatabase(dbInstance: Database.Database) {
       deleted_at DATETIME
     );
 
+    CREATE TABLE IF NOT EXISTS leave_request_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      status TEXT DEFAULT '待审核',
+      employee_id INTEGER,
+      employee_name TEXT NOT NULL,
+      id_card TEXT,
+      phone TEXT,
+      department TEXT,
+      position TEXT,
+      leave_date TEXT NOT NULL,
+      leave_start_date TEXT,
+      leave_end_date TEXT,
+      duration TEXT DEFAULT 'full',
+      half_day_period TEXT,
+      leave_type TEXT,
+      reason TEXT,
+      applicant_signature_data_url TEXT,
+      created_by_name TEXT,
+      reviewer_name TEXT,
+      reviewed_at DATETIME,
+      exported_at DATETIME,
+      printed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME,
+      deleted_at DATETIME
+    );
+
     CREATE TABLE IF NOT EXISTS dormitory_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       status TEXT DEFAULT '待审核',
@@ -897,6 +924,31 @@ export function initDatabase(dbInstance: Database.Database) {
       { name: 'updated_at', definition: 'DATETIME' },
       { name: 'deleted_at', definition: 'DATETIME' },
     ]);
+    ensureColumns(dbInstance, 'leave_request_records', [
+      { name: 'status', definition: "TEXT DEFAULT '待审核'" },
+      { name: 'employee_id', definition: 'INTEGER' },
+      { name: 'employee_name', definition: 'TEXT' },
+      { name: 'id_card', definition: 'TEXT' },
+      { name: 'phone', definition: 'TEXT' },
+      { name: 'department', definition: 'TEXT' },
+      { name: 'position', definition: 'TEXT' },
+      { name: 'leave_date', definition: 'TEXT' },
+      { name: 'leave_start_date', definition: 'TEXT' },
+      { name: 'leave_end_date', definition: 'TEXT' },
+      { name: 'duration', definition: "TEXT DEFAULT 'full'" },
+      { name: 'half_day_period', definition: 'TEXT' },
+      { name: 'leave_type', definition: 'TEXT' },
+      { name: 'reason', definition: 'TEXT' },
+      { name: 'applicant_signature_data_url', definition: 'TEXT' },
+      { name: 'created_by_name', definition: 'TEXT' },
+      { name: 'reviewer_name', definition: 'TEXT' },
+      { name: 'reviewed_at', definition: 'DATETIME' },
+      { name: 'exported_at', definition: 'DATETIME' },
+      { name: 'printed_at', definition: 'DATETIME' },
+      { name: 'created_at', definition: 'DATETIME DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'updated_at', definition: 'DATETIME' },
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
     ensureColumns(dbInstance, 'dormitory_records', [
       { name: 'status', definition: 'TEXT' },
       { name: 'name', definition: 'TEXT' },
@@ -946,6 +998,11 @@ export function initDatabase(dbInstance: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_social_security_purchase_id_card ON social_security_purchase_records(id_card);
     CREATE INDEX IF NOT EXISTS idx_social_security_purchase_created_at ON social_security_purchase_records(created_at);
     CREATE INDEX IF NOT EXISTS idx_social_security_purchase_deleted_at ON social_security_purchase_records(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_leave_request_employee ON leave_request_records(employee_id);
+    CREATE INDEX IF NOT EXISTS idx_leave_request_name ON leave_request_records(employee_name);
+    CREATE INDEX IF NOT EXISTS idx_leave_request_status ON leave_request_records(status);
+    CREATE INDEX IF NOT EXISTS idx_leave_request_date ON leave_request_records(leave_date);
+    CREATE INDEX IF NOT EXISTS idx_leave_request_deleted_at ON leave_request_records(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_dormitory_status ON dormitory_records(status);
     CREATE INDEX IF NOT EXISTS idx_dormitory_name ON dormitory_records(name);
     CREATE INDEX IF NOT EXISTS idx_dormitory_created_at ON dormitory_records(created_at);

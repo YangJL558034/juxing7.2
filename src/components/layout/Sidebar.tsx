@@ -36,6 +36,7 @@ import {
   User,
   Bell,
   Briefcase,
+  Calendar,
   Home,
   Mail,
 } from 'lucide-react';
@@ -89,6 +90,7 @@ const iconMap: Record<string, React.ElementType> = {
   Bot,
   Bell,
   Briefcase,
+  Calendar,
   Home,
   Mail,
 };
@@ -132,6 +134,7 @@ const modulePermissionMap: Record<string, string> = {
   'personnel-resignation': 'personnel',
   'personnel-resignation-certificate': 'personnel',
   'personnel-labor-termination': 'personnel',
+  'personnel-leave-request': 'personnel',
   'administration': 'administration',
   'administration-dormitory': 'administration',
   'administration-rooms': 'administration',
