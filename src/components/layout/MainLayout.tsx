@@ -104,6 +104,7 @@ const pagePermissionMap: Record<string, string> = {
   'assets-overview': 'assets',
   administration: 'administration',
   'administration-dormitory': 'administration',
+  'administration-items': 'administration',
   'administration-rooms': 'administration',
   'administration-beds': 'administration',
   'administration-water-meter': 'administration',
@@ -128,6 +129,7 @@ const personnelSectionMap: Record<string, { section: PersonnelSectionKey; label:
 };
 
 const administrationSectionMap: Record<string, { section: AdministrationSectionKey; label: string }> = {
+  'administration-items': { section: 'items', label: '物品管理' },
   'administration-dormitory': { section: 'dormitory', label: '住宿申请' },
   'administration-rooms': { section: 'rooms', label: '房号管理' },
   'administration-beds': { section: 'beds', label: '床号管理' },

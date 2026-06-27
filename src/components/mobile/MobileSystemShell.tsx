@@ -118,7 +118,7 @@ type MobileMenuGroup = {
 };
 
 const pageKeySet = new Set<string>(pageKeys);
-const publicMobilePages = new Set<PageKey>(['dashboard', 'personnel', 'salary']);
+const publicMobilePages = new Set<PageKey>(['dashboard', 'personnel', 'administration', 'salary']);
 
 const pageTitleMap: Record<PageKey, string> = {
   dashboard: '仪表盘',
@@ -331,7 +331,7 @@ function renderPage(
     case 'personnel':
       return <MobilePersonnelPage canManage={Boolean(managementPermissions.personnel)} />;
     case 'administration':
-      return <MobileAdministrationPage />;
+      return <MobileAdministrationPage canManage={Boolean(managementPermissions.administration)} />;
     case 'human-resources':
       return <MobileBusinessPage moduleKey="human-resources" />;
     case 'permission':
@@ -525,6 +525,7 @@ export default function MobileSystemShell({ user }: { user?: AppUser }) {
             {renderPage(activePage, user, navigateByKey, {
               dashboard: hasModulePermission('dashboard'),
               personnel: hasModulePermission('personnel'),
+              administration: hasModulePermission('administration'),
               salary: hasModulePermission('salary'),
             })}
           </div>

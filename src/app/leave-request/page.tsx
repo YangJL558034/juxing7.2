@@ -36,6 +36,23 @@ const initialForm: LeaveRequestFormData = {
   applicantSignatureDataUrl: '',
 };
 
+interface CurrentLeaveEmployeeResponse {
+  success?: boolean;
+  user?: {
+    name?: string;
+    department?: string;
+  };
+  employee?: {
+    id: number;
+    name: string;
+    idCard: string;
+    phone: string;
+    department: string;
+    position: string;
+    status: string;
+  } | null;
+}
+
 function RequiredMark() {
   return <span className="ml-0.5 text-red-500">*</span>;
 }
@@ -268,6 +285,7 @@ function SignaturePad({
 
 export default function LeaveRequestPage() {
   const [data, setData] = useState<LeaveRequestFormData>(initialForm);
+  const [personalPrefill, setPersonalPrefill] = useState<Partial<LeaveRequestFormData>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
@@ -286,6 +304,50 @@ export default function LeaveRequestPage() {
   const update = <K extends keyof LeaveRequestFormData>(field: K, value: LeaveRequestFormData[K]) => {
     setData(current => ({ ...current, [field]: value }));
   };
+
+  useEffect(() => {
+    let active = true;
+
+    const loadCurrentEmployee = async () => {
+      try {
+        const response = await fetch('/api/leave-requests/current-employee', {
+          cache: 'no-store',
+          credentials: 'include',
+        });
+        if (!response.ok) return;
+
+        const result = await response.json().catch(() => ({})) as CurrentLeaveEmployeeResponse;
+        if (!active || !result.success) return;
+
+        const prefill: Partial<LeaveRequestFormData> = {
+          employeeId: result.employee?.id ?? null,
+          employeeName: result.employee?.name || result.user?.name || '',
+          idCard: normalizeIdCard(result.employee?.idCard || ''),
+          phone: normalizeMobile(result.employee?.phone || ''),
+          department: result.employee?.department || result.user?.department || '',
+          position: result.employee?.position || '',
+        };
+
+        setPersonalPrefill(prefill);
+        setData(current => ({
+          ...current,
+          employeeId: current.employeeId ?? prefill.employeeId ?? null,
+          employeeName: current.employeeName || prefill.employeeName || '',
+          idCard: current.idCard || prefill.idCard || '',
+          phone: current.phone || prefill.phone || '',
+          department: current.department || prefill.department || '',
+          position: current.position || prefill.position || '',
+        }));
+      } catch {
+        // 未登录或无员工档案时保留手动填写流程。
+      }
+    };
+
+    void loadCurrentEmployee();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const submit = async () => {
     if (!canSubmit || submitting) return;
@@ -322,7 +384,15 @@ export default function LeaveRequestPage() {
             className="mt-6 w-full bg-blue-600 hover:bg-blue-700"
             onClick={() => {
               const today = chinaTodayInput();
-              setData({ ...initialForm, leaveDate: today, leaveStartDate: today, leaveEndDate: today });
+              setData({
+                ...initialForm,
+                ...personalPrefill,
+                leaveDate: today,
+                leaveStartDate: today,
+                leaveEndDate: today,
+                reason: '',
+                applicantSignatureDataUrl: '',
+              });
               setSubmitted(false);
             }}
           >

@@ -712,6 +712,36 @@ export function initDatabase(dbInstance: Database.Database) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS item_inventory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT DEFAULT '',
+      unit TEXT DEFAULT '个',
+      quantity INTEGER DEFAULT 0,
+      unit_price REAL DEFAULT 0,
+      remark TEXT DEFAULT '',
+      created_at DATETIME DEFAULT (datetime('now', '+8 hours')),
+      updated_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS item_claim_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id INTEGER NOT NULL,
+      item_name TEXT NOT NULL,
+      applicant_id INTEGER,
+      applicant_name TEXT NOT NULL,
+      department TEXT DEFAULT '',
+      quantity INTEGER DEFAULT 1,
+      reason TEXT DEFAULT '',
+      status TEXT DEFAULT '待审核',
+      reviewer_name TEXT DEFAULT '',
+      reviewed_at DATETIME,
+      created_at DATETIME DEFAULT (datetime('now', '+8 hours')),
+      updated_at DATETIME,
+      deleted_at DATETIME,
+      FOREIGN KEY (item_id) REFERENCES item_inventory(id)
+    );
+
     CREATE TABLE IF NOT EXISTS recruitment_jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -1013,6 +1043,10 @@ export function initDatabase(dbInstance: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_dormitory_delete_records_deleted_by ON dormitory_delete_records(deleted_by_user_id);
     CREATE INDEX IF NOT EXISTS idx_water_meter_room_no ON water_meter_records(room_no);
     CREATE INDEX IF NOT EXISTS idx_water_meter_reading_date ON water_meter_records(reading_date);
+    CREATE INDEX IF NOT EXISTS idx_item_inventory_name ON item_inventory(name);
+    CREATE INDEX IF NOT EXISTS idx_item_claim_records_item_id ON item_claim_records(item_id);
+    CREATE INDEX IF NOT EXISTS idx_item_claim_records_status ON item_claim_records(status);
+    CREATE INDEX IF NOT EXISTS idx_item_claim_records_created_at ON item_claim_records(created_at);
   `);
 
   try {
@@ -2478,21 +2512,29 @@ const monthlyRecordSelect = `
 export const query = {
   // 用户相关
   findUserByUsername: db.prepare(`
-      SELECT u.*, COALESCE(d.name, u.department) as department 
+      SELECT u.*, COALESCE(d.name, d_text.name, u.department) as department, COALESCE(u.department_id, d_text.id) as department_id
       FROM users u 
       LEFT JOIN departments d ON u.department_id = d.id 
+      LEFT JOIN departments d_text ON CAST(d_text.id AS TEXT) = u.department
       WHERE u.username = ?
     `),
   findUserById: db.prepare(`
-      SELECT u.*, COALESCE(d.name, u.department) as department 
+      SELECT u.*, COALESCE(d.name, d_text.name, u.department) as department, COALESCE(u.department_id, d_text.id) as department_id
       FROM users u 
       LEFT JOIN departments d ON u.department_id = d.id 
+      LEFT JOIN departments d_text ON CAST(d_text.id AS TEXT) = u.department
       WHERE u.id = ?
     `),
   getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
   createUser: db.prepare('INSERT INTO users (username, password, name, role, department, email) VALUES (?, ?, ?, ?, ?, ?)'),
   updateUser: db.prepare('UPDATE users SET name = ?, role = ?, department = ?, email = ? WHERE id = ?'),
-  getAllUsers: db.prepare('SELECT id, username, name, role, department, email, created_at FROM users ORDER BY created_at DESC'),
+  getAllUsers: db.prepare(`
+    SELECT u.id, u.username, u.name, u.role, COALESCE(d.name, d_text.name, u.department) as department, COALESCE(u.department_id, d_text.id) as department_id, u.email, u.created_at
+    FROM users u
+    LEFT JOIN departments d ON u.department_id = d.id
+    LEFT JOIN departments d_text ON CAST(d_text.id AS TEXT) = u.department
+    ORDER BY u.created_at DESC
+  `),
   updateUserPassword: db.prepare('UPDATE users SET password = ? WHERE id = ?'),
   deleteUser: db.prepare('DELETE FROM users WHERE id = ?'),
   
@@ -2549,9 +2591,22 @@ export const query = {
   
   // 用户管理相关
   getAllUsersDetail: db.prepare(`
-      SELECT u.id, u.username, u.name, u.role, COALESCE(d.name, u.department) as department, u.department_id, u.position_id, u.manager_id, u.email, u.created_at 
+      SELECT
+        u.id,
+        u.username,
+        u.name,
+        u.role,
+        COALESCE(d.name, d_text.name, u.department) as department,
+        COALESCE(u.department_id, d_text.id) as department_id,
+        u.position_id,
+        u.manager_id,
+        manager.name as manager_name,
+        u.email,
+        u.created_at
       FROM users u 
       LEFT JOIN departments d ON u.department_id = d.id
+      LEFT JOIN departments d_text ON CAST(d_text.id AS TEXT) = u.department
+      LEFT JOIN users manager ON manager.id = u.manager_id
     `),
   
   // 权限相关

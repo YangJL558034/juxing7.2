@@ -484,6 +484,19 @@ export function Sidebar({
     return {
       ...item,
       children: item.children?.map((child) => {
+        if (child.key === 'administration') {
+          const children = child.children || [];
+          const hasItemsPage = children.some((navChild) => navChild.key === 'administration-items');
+          return {
+            ...child,
+            children: hasItemsPage
+              ? children
+              : [
+                ...children,
+                { key: 'administration-items', label: '物品管理', icon: 'Package' },
+              ],
+          };
+        }
         if (child.key !== 'assets') return child;
         return {
           ...child,

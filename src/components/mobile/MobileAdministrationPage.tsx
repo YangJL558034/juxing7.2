@@ -22,6 +22,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import MobileItemClaims from '@/components/mobile/MobileItemClaims';
 import MobileWaterMeterManager from '@/components/mobile/MobileWaterMeterManager';
 import { cn } from '@/lib/utils';
 import type { DormitoryRecord, DormitoryRoom, DormitoryRoomResident, DormitoryStatus } from '@/types/dormitory';
@@ -99,7 +100,7 @@ function statusTone(status?: string) {
   return 'bg-slate-100 text-slate-700 ring-slate-200';
 }
 
-export default function MobileAdministrationPage() {
+export default function MobileAdministrationPage({ canManage = false }: { canManage?: boolean }) {
   const [activeStatus, setActiveStatus] = useState<DormitoryStatus | 'all'>('all');
   const [query, setQuery] = useState('');
   const [records, setRecords] = useState<DormitoryRecord[]>([]);
@@ -180,8 +181,14 @@ export default function MobileAdministrationPage() {
     return <MobileWaterMeterManager onBack={() => setWaterManagerOpen(false)} />;
   }
 
+  if (!canManage) {
+    return <MobileItemClaims canManage={false} />;
+  }
+
   return (
     <div className="space-y-4">
+      <MobileItemClaims canManage />
+
       <section className="mobile-ios-glass rounded-[30px] p-5 text-slate-950">
         <div className="flex items-start justify-between gap-3">
           <div>
