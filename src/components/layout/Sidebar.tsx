@@ -157,6 +157,7 @@ const modulePermissionMap: Record<string, string> = {
 };
 
 const hasPermission = (key: string, permissions: string[], isAdmin: boolean): boolean => {
+  if (key === 'dashboard') return true;
   if (isAdmin) return true;
   if (key === 'assets-overview' || key.startsWith('assets-type:')) return permissions.includes('assets');
   const permissionKey = modulePermissionMap[key];

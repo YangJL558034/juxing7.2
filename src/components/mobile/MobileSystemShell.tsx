@@ -118,7 +118,7 @@ type MobileMenuGroup = {
 };
 
 const pageKeySet = new Set<string>(pageKeys);
-const publicMobilePages = new Set<PageKey>(['personnel', 'salary']);
+const publicMobilePages = new Set<PageKey>(['dashboard', 'personnel', 'salary']);
 
 const pageTitleMap: Record<PageKey, string> = {
   dashboard: '仪表盘',
@@ -304,7 +304,7 @@ function renderPage(
 
   switch (activePage) {
     case 'dashboard':
-      return <MobileDashboardPage onNavigate={onNavigate} />;
+      return <MobileDashboardPage onNavigate={onNavigate} fullAccess={Boolean(managementPermissions.dashboard)} />;
     case 'taskmanage':
     case 'distribution':
     case 'todo':
@@ -355,7 +355,7 @@ function renderPage(
     case 'notification-center':
       return <MobileBusinessPage moduleKey="notification-center" />;
     default:
-      return <MobileDashboardPage onNavigate={onNavigate} />;
+      return <MobileDashboardPage onNavigate={onNavigate} fullAccess={Boolean(managementPermissions.dashboard)} />;
   }
 }
 
@@ -523,6 +523,7 @@ export default function MobileSystemShell({ user }: { user?: AppUser }) {
         {visibleItems.length || activePage === 'profile' ? (
           <div key={activePage} className="mobile-system-page animate-in fade-in slide-in-from-bottom-2 duration-300">
             {renderPage(activePage, user, navigateByKey, {
+              dashboard: hasModulePermission('dashboard'),
               personnel: hasModulePermission('personnel'),
               salary: hasModulePermission('salary'),
             })}

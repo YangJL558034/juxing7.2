@@ -240,10 +240,13 @@ export function MainLayout({ user }: MainLayoutProps) {
 
   // 检查是否有权限访问某页面
   const hasPermission = useCallback((page: string): boolean => {
+    if (page === 'dashboard') return true;
     if (user?.role === 'admin') return true;
     if (page.startsWith('assets-type:')) return permissions.includes('assets');
     return permissions.includes(pagePermissionMap[page] || page);
   }, [permissions, user?.role]);
+
+  const canViewFullDashboard = user?.role === 'admin' || user?.role === 'super_admin' || permissions.includes('dashboard');
 
   // 导航时检查权限
   const handleNavigate = useCallback((key: string) => {
@@ -380,7 +383,7 @@ export function MainLayout({ user }: MainLayoutProps) {
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard':
-        return <Dashboard />;
+        return <Dashboard fullAccess={canViewFullDashboard} />;
       case 'taskmanage':
         return <TaskManagePage />;
       case 'distribution':
@@ -442,7 +445,7 @@ export function MainLayout({ user }: MainLayoutProps) {
       case 'notification-center':
         return <NotificationCenterPage />;
       default:
-        return <Dashboard />;
+        return <Dashboard fullAccess={canViewFullDashboard} />;
     }
   };
 
