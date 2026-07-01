@@ -724,7 +724,8 @@ export function initDatabase(dbInstance: Database.Database) {
       unit_price REAL DEFAULT 0,
       remark TEXT DEFAULT '',
       created_at DATETIME DEFAULT (datetime('now', '+8 hours')),
-      updated_at DATETIME
+      updated_at DATETIME,
+      deleted_at DATETIME
     );
 
     CREATE TABLE IF NOT EXISTS item_claim_records (
@@ -982,6 +983,9 @@ export function initDatabase(dbInstance: Database.Database) {
       { name: 'updated_at', definition: 'DATETIME' },
       { name: 'deleted_at', definition: 'DATETIME' },
     ]);
+    ensureColumns(dbInstance, 'item_inventory', [
+      { name: 'deleted_at', definition: 'DATETIME' },
+    ]);
     ensureColumns(dbInstance, 'dormitory_records', [
       { name: 'status', definition: 'TEXT' },
       { name: 'name', definition: 'TEXT' },
@@ -1047,6 +1051,7 @@ export function initDatabase(dbInstance: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_water_meter_room_no ON water_meter_records(room_no);
     CREATE INDEX IF NOT EXISTS idx_water_meter_reading_date ON water_meter_records(reading_date);
     CREATE INDEX IF NOT EXISTS idx_item_inventory_name ON item_inventory(name);
+    CREATE INDEX IF NOT EXISTS idx_item_inventory_deleted_at ON item_inventory(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_item_claim_records_item_id ON item_claim_records(item_id);
     CREATE INDEX IF NOT EXISTS idx_item_claim_records_status ON item_claim_records(status);
     CREATE INDEX IF NOT EXISTS idx_item_claim_records_created_at ON item_claim_records(created_at);

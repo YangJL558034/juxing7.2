@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: '请填写领用原因' }, { status: 400 });
     }
 
-    const item = db.prepare('SELECT id, name, quantity FROM item_inventory WHERE id = ?').get(itemId) as ItemRow | undefined;
+    const item = db.prepare('SELECT id, name, quantity FROM item_inventory WHERE id = ? AND deleted_at IS NULL').get(itemId) as ItemRow | undefined;
     if (!item) {
       return NextResponse.json({ success: false, error: '物品不存在' }, { status: 404 });
     }

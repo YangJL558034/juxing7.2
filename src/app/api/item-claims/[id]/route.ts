@@ -108,7 +108,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       return NextResponse.json({ success: false, error: '已审核或已驳回的领用申请不能修改' }, { status: 400 });
     }
 
-    const item = db.prepare('SELECT id, name, quantity FROM item_inventory WHERE id = ?').get(itemId) as ItemRow | undefined;
+    const item = db.prepare('SELECT id, name, quantity FROM item_inventory WHERE id = ? AND deleted_at IS NULL').get(itemId) as ItemRow | undefined;
     if (!item) {
       return NextResponse.json({ success: false, error: '物品不存在' }, { status: 404 });
     }

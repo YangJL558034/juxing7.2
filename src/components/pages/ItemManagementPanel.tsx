@@ -174,6 +174,7 @@ export default function ItemManagementPanel() {
   const [summary, setSummary] = useState<ItemInventorySummary>(emptySummary);
   const [loading, setLoading] = useState(true);
   const [savingItem, setSavingItem] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
   const [submittingClaim, setSubmittingClaim] = useState(false);
   const [updatingClaim, setUpdatingClaim] = useState(false);
   const [reviewingId, setReviewingId] = useState<number | null>(null);
@@ -183,6 +184,7 @@ export default function ItemManagementPanel() {
   const [viewClaimOpen, setViewClaimOpen] = useState(false);
   const [editClaimOpen, setEditClaimOpen] = useState(false);
   const [selectedClaim, setSelectedClaim] = useState<ItemClaimRecord | null>(null);
+  const [editingItem, setEditingItem] = useState<ItemInventoryRecord | null>(null);
   const [error, setError] = useState('');
 
   const [itemForm, setItemForm] = useState(emptyItemForm);
@@ -244,7 +246,21 @@ export default function ItemManagementPanel() {
   }), [claims]);
 
   const openItemDialog = () => {
+    setEditingItem(null);
     setItemForm(emptyItemForm);
+    setItemDialogOpen(true);
+  };
+
+  const openEditItem = (item: ItemInventoryRecord) => {
+    setEditingItem(item);
+    setItemForm({
+      name: item.name,
+      category: item.category,
+      unit: item.unit,
+      quantity: String(item.remainingQuantity),
+      unitPrice: String(item.unitPrice),
+      remark: item.remark,
+    });
     setItemDialogOpen(true);
   };
 
@@ -280,7 +296,7 @@ export default function ItemManagementPanel() {
     setEditClaimOpen(true);
   };
 
-  const handleCreateItem = async () => {
+  const handleSaveItem = async () => {
     if (!itemForm.name.trim()) {
       alert('请填写物品名称');
       return;
@@ -288,8 +304,9 @@ export default function ItemManagementPanel() {
 
     setSavingItem(true);
     try {
-      const response = await fetch('/api/item-inventory', {
-        method: 'POST',
+      const isEditing = Boolean(editingItem);
+      const response = await fetch(isEditing ? `/api/item-inventory/${editingItem?.id}` : '/api/item-inventory', {
+        method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
@@ -303,16 +320,39 @@ export default function ItemManagementPanel() {
       });
       const result = await response.json().catch(() => ({})) as MutateItemResponse;
       if (!response.ok || !result.success) {
-        throw new Error(result.error || '新增物品失败');
+        throw new Error(result.error || (isEditing ? '修改物品失败' : '新增物品失败'));
       }
 
       setItemForm(emptyItemForm);
+      setEditingItem(null);
       setItemDialogOpen(false);
       await loadData();
     } catch (saveError) {
-      alert(saveError instanceof Error ? saveError.message : '新增物品失败');
+      alert(saveError instanceof Error ? saveError.message : '保存物品失败');
     } finally {
       setSavingItem(false);
+    }
+  };
+
+  const handleDeleteItem = async (item: ItemInventoryRecord) => {
+    if (!window.confirm(`确定删除物品「${item.name}」吗？删除后移动端将不再显示该物品，历史领用记录仍会保留。`)) return;
+
+    setDeletingItemId(item.id);
+    try {
+      const response = await fetch(`/api/item-inventory/${item.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const result = await response.json().catch(() => ({})) as MutateItemResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '删除物品失败');
+      }
+
+      await loadData();
+    } catch (deleteError) {
+      alert(deleteError instanceof Error ? deleteError.message : '删除物品失败');
+    } finally {
+      setDeletingItemId(null);
     }
   };
 
@@ -487,12 +527,13 @@ export default function ItemManagementPanel() {
                   <TableHead>待审核</TableHead>
                   <TableHead>单价</TableHead>
                   <TableHead>剩余金额</TableHead>
+                  <TableHead className="min-w-40">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading && (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-28 text-center text-sm text-slate-500">
+                    <TableCell colSpan={8} className="h-28 text-center text-sm text-slate-500">
                       <span className="inline-flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         正在加载物品库...
@@ -502,7 +543,7 @@ export default function ItemManagementPanel() {
                 )}
                 {!loading && items.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-28 text-center text-sm text-slate-500">暂无物品</TableCell>
+                    <TableCell colSpan={8} className="h-28 text-center text-sm text-slate-500">暂无物品</TableCell>
                   </TableRow>
                 )}
                 {!loading && items.map((item) => (
@@ -517,6 +558,24 @@ export default function ItemManagementPanel() {
                     <TableCell>{item.pendingQuantity} {item.unit}</TableCell>
                     <TableCell>{formatMoney(item.unitPrice)}</TableCell>
                     <TableCell>{formatMoney(item.totalValue)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEditItem(item)}>
+                          <Pencil className="h-4 w-4" />
+                          修改
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:text-red-700"
+                          onClick={() => void handleDeleteItem(item)}
+                          disabled={deletingItemId === item.id}
+                        >
+                          {deletingItemId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          删除
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -654,8 +713,10 @@ export default function ItemManagementPanel() {
       <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>新增物品</DialogTitle>
-            <DialogDescription>填写物品名称、数量和单价，保存后进入物品库。</DialogDescription>
+            <DialogTitle>{editingItem ? '修改物品' : '新增物品'}</DialogTitle>
+            <DialogDescription>
+              {editingItem ? '修改物品名称、分类、剩余数量和单价，保存后同步到后台与移动端。' : '填写物品名称、数量和单价，保存后进入物品库。'}
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
             <Input
@@ -698,9 +759,9 @@ export default function ItemManagementPanel() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setItemDialogOpen(false)}>取消</Button>
-            <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleCreateItem} disabled={savingItem}>
-              {savingItem ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              保存物品
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSaveItem} disabled={savingItem}>
+              {savingItem ? <Loader2 className="h-4 w-4 animate-spin" /> : editingItem ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {editingItem ? '保存修改' : '保存物品'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -89,7 +89,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       }
 
       if (action === 'approve') {
-        const item = db.prepare('SELECT id, quantity FROM item_inventory WHERE id = ?')
+        const item = db.prepare('SELECT id, quantity FROM item_inventory WHERE id = ? AND deleted_at IS NULL')
           .get(claim.item_id) as ItemRow | undefined;
         if (!item) {
           return { ok: false as const, status: 404, error: '物品不存在' };

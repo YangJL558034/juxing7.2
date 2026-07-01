@@ -1,10 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ClipboardList, Loader2, PackageCheck, Plus, RefreshCcw } from 'lucide-react';
+import { ClipboardList, Eye, Loader2, PackageCheck, Plus, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import type {
@@ -72,7 +79,9 @@ export default function MobileItemClaims({ canManage, standaloneRequest = false 
   const [reviewingId, setReviewingId] = useState<number | null>(null);
   const [stockOpen, setStockOpen] = useState(false);
   const [claimOpen, setClaimOpen] = useState(false);
+  const [claimDetailOpen, setClaimDetailOpen] = useState(false);
   const [error, setError] = useState('');
+  const [selectedClaim, setSelectedClaim] = useState<ItemClaimRecord | null>(null);
   const [stockForm, setStockForm] = useState(emptyStockForm);
   const [applicantName, setApplicantName] = useState('');
   const [claimForm, setClaimForm] = useState({
@@ -130,7 +139,11 @@ export default function MobileItemClaims({ canManage, standaloneRequest = false 
   const showStockControls = canManage && !standaloneRequest;
   const showClaimControls = !standaloneRequest;
   const claimFormOpen = standaloneRequest || claimOpen;
-  const pendingClaims = useMemo(() => claims.filter((claim) => claim.status === '待审核'), [claims]);
+
+  const openClaimDetail = (claim: ItemClaimRecord) => {
+    setSelectedClaim(claim);
+    setClaimDetailOpen(true);
+  };
 
   const submitStock = async () => {
     if (!stockForm.name.trim()) {
@@ -453,7 +466,7 @@ export default function MobileItemClaims({ canManage, standaloneRequest = false 
       {!standaloneRequest && (
       <section className="space-y-3">
         <div className="flex items-center justify-between px-1">
-          <h2 className="text-base font-semibold text-slate-950">{canManage ? '领用审核' : '我的领用'}</h2>
+          <h2 className="text-base font-semibold text-slate-950">{canManage ? '领用记录' : '我的领用'}</h2>
           <span className="text-sm text-slate-500">{claims.length} 条</span>
         </div>
 
@@ -461,8 +474,12 @@ export default function MobileItemClaims({ canManage, standaloneRequest = false 
           <div className="rounded-[24px] border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500">暂无领用记录</div>
         )}
 
-        {(canManage ? pendingClaims : claims).map((claim) => (
-          <article key={claim.id} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+        {claims.map((claim) => (
+          <article
+            key={claim.id}
+            className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm transition active:scale-[0.99]"
+            onClick={() => openClaimDetail(claim)}
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold text-slate-950">{claim.itemName}</h3>
@@ -473,13 +490,35 @@ export default function MobileItemClaims({ canManage, standaloneRequest = false 
             <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">
               数量 {claim.quantity}，原因：{display(claim.reason)}
             </div>
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+              <span>{claim.status === '已审核' ? `领取时间：${display(claim.reviewedAt)}` : `提交时间：${display(claim.createdAt)}`}</span>
+              <span className="inline-flex items-center gap-1 font-semibold text-blue-600">
+                <Eye className="h-3.5 w-3.5" />
+                详细
+              </span>
+            </div>
             {canManage && claim.status === '待审核' && (
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <Button className="rounded-2xl bg-emerald-600 hover:bg-emerald-700" onClick={() => void reviewClaim(claim, 'approve')} disabled={reviewingId === claim.id}>
+                <Button
+                  className="rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void reviewClaim(claim, 'approve');
+                  }}
+                  disabled={reviewingId === claim.id}
+                >
                   {reviewingId === claim.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   通过
                 </Button>
-                <Button variant="outline" className="rounded-2xl" onClick={() => void reviewClaim(claim, 'reject')} disabled={reviewingId === claim.id}>
+                <Button
+                  variant="outline"
+                  className="rounded-2xl"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void reviewClaim(claim, 'reject');
+                  }}
+                  disabled={reviewingId === claim.id}
+                >
                   驳回
                 </Button>
               </div>
@@ -488,6 +527,40 @@ export default function MobileItemClaims({ canManage, standaloneRequest = false 
         ))}
       </section>
       )}
+
+      <Sheet open={claimDetailOpen} onOpenChange={setClaimDetailOpen}>
+        <SheetContent side="bottom" className="max-h-[86dvh] rounded-t-[26px] p-0">
+          <SheetHeader className="border-b border-slate-100 px-4 py-4 text-left">
+            <SheetTitle>{selectedClaim?.itemName || '领用详情'}</SheetTitle>
+            <SheetDescription>
+              {selectedClaim ? `${selectedClaim.status} / ${selectedClaim.applicantName}` : ''}
+            </SheetDescription>
+          </SheetHeader>
+          {selectedClaim && (
+            <div className="max-h-[calc(86dvh-6rem)] space-y-3 overflow-y-auto p-4">
+              {[
+                ['申请人', selectedClaim.applicantName],
+                ['部门', selectedClaim.department],
+                ['物品', selectedClaim.itemName],
+                ['数量', selectedClaim.quantity],
+                ['状态', selectedClaim.status],
+                ['审核人', selectedClaim.reviewerName],
+                ['审核时间', selectedClaim.reviewedAt],
+                ['提交时间', selectedClaim.createdAt],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 text-sm">
+                  <span className="text-slate-500">{label}</span>
+                  <span className="max-w-[58%] truncate font-medium text-slate-950">{display(value)}</span>
+                </div>
+              ))}
+              <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm">
+                <div className="text-slate-500">领用原因</div>
+                <div className="mt-2 whitespace-pre-wrap font-medium text-slate-950">{display(selectedClaim.reason)}</div>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -93,6 +93,7 @@ export async function GET() {
         COALESCE(SUM(CASE WHEN c.status = '待审核' AND c.deleted_at IS NULL THEN c.quantity ELSE 0 END), 0) AS pending_quantity
       FROM item_inventory i
       LEFT JOIN item_claim_records c ON c.item_id = i.id
+      WHERE i.deleted_at IS NULL
       GROUP BY i.id
       ORDER BY i.created_at DESC, i.id DESC
     `).all() as ItemInventoryRow[];
