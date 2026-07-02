@@ -236,6 +236,8 @@ const normalizeLocationLabel = (value?: string): string => {
 };
 
 const LAST_EMPLOYEE_QUERY_KEY = 'employee-query:last-identity';
+const LAST_EMPLOYEE_QUERY_COOKIE = 'employee_query_last_identity';
+const LAST_EMPLOYEE_QUERY_MAX_AGE = 60 * 60 * 24 * 365;
 
 interface SavedEmployeeQuery {
   name: string;
@@ -246,6 +248,57 @@ const maskIdCard = (value: string): string => {
   const text = value.trim();
   if (text.length <= 8) return text;
   return `${text.slice(0, 6)}********${text.slice(-4)}`;
+};
+
+const formatSavedQueryLabel = (query: SavedEmployeeQuery): string => {
+  const displayName = query.name || '未填写姓名';
+  const displayIdCard = query.idCard ? maskIdCard(query.idCard) : '未填写身份证';
+  return `${displayName} · ${displayIdCard}`;
+};
+
+const normalizeSavedQuery = (value: unknown): SavedEmployeeQuery | null => {
+  const data = typeof value === 'object' && value ? value as Partial<SavedEmployeeQuery> : {};
+  const savedName = typeof data.name === 'string' ? data.name.trim() : '';
+  const savedIdCard = typeof data.idCard === 'string' ? data.idCard.trim() : '';
+  if (!savedName && !savedIdCard) return null;
+  return { name: savedName, idCard: savedIdCard };
+};
+
+const getCookieSecuritySuffix = (): string => (
+  window.location.protocol === 'https:' ? '; Secure' : ''
+);
+
+const readSavedQueryFromCookie = (): SavedEmployeeQuery | null => {
+  const prefix = `${LAST_EMPLOYEE_QUERY_COOKIE}=`;
+  const cookie = document.cookie
+    .split(';')
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(prefix));
+  if (!cookie) return null;
+
+  try {
+    return normalizeSavedQuery(JSON.parse(decodeURIComponent(cookie.slice(prefix.length))));
+  } catch {
+    return null;
+  }
+};
+
+const writeSavedQueryToCookie = (query: SavedEmployeeQuery): void => {
+  document.cookie = [
+    `${LAST_EMPLOYEE_QUERY_COOKIE}=${encodeURIComponent(JSON.stringify(query))}`,
+    `Max-Age=${LAST_EMPLOYEE_QUERY_MAX_AGE}`,
+    'Path=/',
+    'SameSite=Lax',
+  ].join('; ') + getCookieSecuritySuffix();
+};
+
+const clearSavedQueryCookie = (): void => {
+  document.cookie = [
+    `${LAST_EMPLOYEE_QUERY_COOKIE}=`,
+    'Max-Age=0',
+    'Path=/',
+    'SameSite=Lax',
+  ].join('; ') + getCookieSecuritySuffix();
 };
 
 export default function EmployeeQueryPage() {
@@ -272,42 +325,86 @@ export default function EmployeeQueryPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const canSearch = Boolean(name.trim() && idCard.trim() && idCard.trim().length >= 15);
 
+  const persistSavedQuery = (queryName: string, queryIdCard: string) => {
+    const nextSavedQuery: SavedEmployeeQuery = {
+      name: queryName.trim(),
+      idCard: queryIdCard.trim(),
+    };
+
+    if (!nextSavedQuery.name && !nextSavedQuery.idCard) {
+      setSavedQuery(null);
+      try {
+        window.localStorage.removeItem(LAST_EMPLOYEE_QUERY_KEY);
+      } catch {
+        // 忽略本地存储清理失败。
+      }
+      try {
+        clearSavedQueryCookie();
+      } catch {
+        // 忽略 Cookie 清理失败。
+      }
+      return;
+    }
+
+    setSavedQuery(nextSavedQuery);
+    try {
+      window.localStorage.setItem(LAST_EMPLOYEE_QUERY_KEY, JSON.stringify(nextSavedQuery));
+      writeSavedQueryToCookie(nextSavedQuery);
+    } catch {
+      // 浏览器隐私模式可能禁用本地存储，查询本身不受影响。
+      try {
+        writeSavedQueryToCookie(nextSavedQuery);
+      } catch {
+        // Cookie 也被禁用时，只保留当前页面内状态。
+      }
+    }
+  };
+
   useEffect(() => {
+    let nextSavedQuery: SavedEmployeeQuery | null = null;
+
     try {
       const stored = window.localStorage.getItem(LAST_EMPLOYEE_QUERY_KEY);
-      if (!stored) return;
-
-      const parsed = JSON.parse(stored) as Partial<SavedEmployeeQuery>;
-      const savedName = typeof parsed.name === 'string' ? parsed.name.trim() : '';
-      const savedIdCard = typeof parsed.idCard === 'string' ? parsed.idCard.trim() : '';
-      if (!savedName || !savedIdCard) {
+      nextSavedQuery = stored ? normalizeSavedQuery(JSON.parse(stored)) : null;
+      if (!nextSavedQuery && stored) {
         window.localStorage.removeItem(LAST_EMPLOYEE_QUERY_KEY);
-        return;
       }
-
-      const nextSavedQuery: SavedEmployeeQuery = {
-        name: savedName,
-        idCard: savedIdCard,
-      };
-      setSavedQuery(nextSavedQuery);
-      setName((current) => current || nextSavedQuery.name);
-      setIdCard((current) => current || nextSavedQuery.idCard);
     } catch {
-      window.localStorage.removeItem(LAST_EMPLOYEE_QUERY_KEY);
+      try {
+        window.localStorage.removeItem(LAST_EMPLOYEE_QUERY_KEY);
+      } catch {
+        // 忽略本地存储清理失败。
+      }
+    }
+
+    if (!nextSavedQuery) {
+      try {
+        nextSavedQuery = readSavedQueryFromCookie();
+      } catch {
+        clearSavedQueryCookie();
+      }
+    }
+
+    if (!nextSavedQuery) return;
+
+    setSavedQuery(nextSavedQuery);
+    setName((current) => current || nextSavedQuery.name);
+    setIdCard((current) => current || nextSavedQuery.idCard);
+
+    try {
+      window.localStorage.setItem(LAST_EMPLOYEE_QUERY_KEY, JSON.stringify(nextSavedQuery));
+      writeSavedQueryToCookie(nextSavedQuery);
+    } catch {
+      try {
+        writeSavedQueryToCookie(nextSavedQuery);
+      } catch {
+        // 忽略浏览器持久化限制。
+      }
     }
   }, []);
 
   const rememberQuery = (queryName: string, queryIdCard: string) => {
-    const nextSavedQuery: SavedEmployeeQuery = {
-      name: queryName,
-      idCard: queryIdCard,
-    };
-    setSavedQuery(nextSavedQuery);
-    try {
-      window.localStorage.setItem(LAST_EMPLOYEE_QUERY_KEY, JSON.stringify(nextSavedQuery));
-    } catch {
-      // 浏览器隐私模式可能禁用本地存储，查询本身不受影响。
-    }
+    persistSavedQuery(queryName, queryIdCard);
   };
 
   const useSavedQuery = () => {
@@ -316,12 +413,29 @@ export default function EmployeeQueryPage() {
     setIdCard(savedQuery.idCard);
   };
 
+  const handleNameChange = (value: string) => {
+    setName(value);
+    persistSavedQuery(value, idCard);
+  };
+
+  const handleIdCardChange = (value: string) => {
+    setIdCard(value);
+    persistSavedQuery(name, value);
+  };
+
   const clearSavedQuery = () => {
     setSavedQuery(null);
+    setName('');
+    setIdCard('');
     try {
       window.localStorage.removeItem(LAST_EMPLOYEE_QUERY_KEY);
     } catch {
       // 忽略本地存储清理失败。
+    }
+    try {
+      clearSavedQueryCookie();
+    } catch {
+      // 忽略 Cookie 清理失败。
     }
   };
 
@@ -744,7 +858,7 @@ export default function EmployeeQueryPage() {
                       className="flex min-w-0 items-center gap-2 text-left text-cyan-900"
                     >
                       <Clock className="h-4 w-4 shrink-0 text-cyan-700" />
-                      <span className="truncate">上次查询：{savedQuery.name} · {maskIdCard(savedQuery.idCard)}</span>
+                      <span className="truncate">上次查询：{formatSavedQueryLabel(savedQuery)}</span>
                     </button>
                     <button
                       type="button"
@@ -766,7 +880,7 @@ export default function EmployeeQueryPage() {
                       <Input
                         placeholder="请输入姓名"
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        onChange={(e) => handleNameChange(e.target.value)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' && canSearch && !loading) void handleSearch();
                         }}
@@ -782,7 +896,7 @@ export default function EmployeeQueryPage() {
                       <Input
                         placeholder="请输入身份证号"
                         value={idCard}
-                        onChange={(e) => setIdCard(e.target.value)}
+                        onChange={(e) => handleIdCardChange(e.target.value)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' && canSearch && !loading) void handleSearch();
                         }}
