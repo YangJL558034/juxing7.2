@@ -24,7 +24,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  formatAttendanceLeaveLabel,
+  formatLeaveDateRange,
+  isDateInLeaveRange,
+  isLeaveRangeOverlappingMonth,
+} from '@/lib/leave-records';
 import { cn } from '@/lib/utils';
+import type { LeaveRequestRecord } from '@/types/leave-request';
 
 interface Employee {
   id: number;
@@ -48,6 +55,7 @@ interface MonthlyRecord {
   month: string;
   month_num: number;
   department: string;
+  id_card?: string;
   location?: string;
   normal_hours: number;
   weekday_overtime: number;
@@ -116,6 +124,7 @@ export default function MobileSalaryPage({ canManage = false, user }: { canManag
   const [month, setMonth] = useState(currentMonth);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [records, setRecords] = useState<MonthlyRecord[]>([]);
+  const [leaveRecords, setLeaveRecords] = useState<LeaveRequestRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<MonthlyRecord | null>(null);
@@ -139,6 +148,7 @@ export default function MobileSalaryPage({ canManage = false, user }: { canManag
       const salaryData = await salaryRes.json().catch(() => ({}));
       if (!salaryRes.ok || !salaryData.success) throw new Error(salaryData.error || '获取工资失败');
       setRecords(salaryData.data || []);
+      setLeaveRecords(salaryData.leaveRecords || []);
       if (canManage) {
         const employeeRes = await fetch('/api/employees', { cache: 'no-store' });
         const employeeData = await employeeRes.json().catch(() => ({}));
@@ -151,6 +161,7 @@ export default function MobileSalaryPage({ canManage = false, user }: { canManag
       setError(fetchError instanceof Error ? fetchError.message : '获取工资工时失败');
       setEmployees([]);
       setRecords([]);
+      setLeaveRecords([]);
     } finally {
       setLoading(false);
     }
@@ -221,12 +232,109 @@ export default function MobileSalaryPage({ canManage = false, user }: { canManag
     return getAttendanceTimes(details[String(day)] ?? details[String(day).padStart(2, '0')]);
   };
 
+  const findEmployeeForLeave = (leave: LeaveRequestRecord) => {
+    if (leave.employeeId) {
+      const byId = employees.find((employee) => employee.id === leave.employeeId);
+      if (byId) return byId;
+    }
+    if (leave.idCard) {
+      const byIdCard = employees.find((employee) => employee.id_card && employee.id_card === leave.idCard);
+      if (byIdCard) return byIdCard;
+    }
+    return employees.find((employee) =>
+      employee.name === leave.employeeName
+      && (!leave.department || employee.department === leave.department)
+    ) || null;
+  };
+
+  const leaveMatchesRecord = (leave: LeaveRequestRecord, record: MonthlyRecord) => {
+    if (leave.employeeId && leave.employeeId === record.employee_id) return true;
+    if (leave.idCard && record.id_card && leave.idCard === record.id_card) return true;
+    return leave.employeeName === record.employee_name
+      && (!leave.department || !record.department || leave.department === record.department);
+  };
+
+  const getLeaveRequestsForRecordDate = (record: MonthlyRecord, date: string) => leaveRecords.filter((leave) =>
+    leave.status === '已审核'
+    && isDateInLeaveRange(leave, date)
+    && leaveMatchesRecord(leave, record)
+  );
+
+  const hasLeaveForRecordInMonth = (record: MonthlyRecord, numericYear: number, numericMonth: number) => leaveRecords.some((leave) =>
+    leave.status === '已审核'
+    && isLeaveRangeOverlappingMonth(leave, numericYear, numericMonth)
+    && leaveMatchesRecord(leave, record)
+  );
+
+  const createLeaveOnlyAttendanceRecord = (leave: LeaveRequestRecord, numericYear: number, numericMonth: number): MonthlyRecord => {
+    const employee = findEmployeeForLeave(leave);
+    const inferredLocation = normalizeLocation(employee?.location || (leave.department.includes('车间') ? 'workshop' : 'office'));
+    return {
+      id: -leave.id,
+      employee_id: leave.employeeId || employee?.id || -leave.id,
+      employee_name: leave.employeeName,
+      year: numericYear,
+      month: String(numericMonth).padStart(2, '0'),
+      month_num: numericMonth,
+      department: leave.department || employee?.department || '',
+      id_card: leave.idCard || employee?.id_card || '',
+      location: inferredLocation,
+      normal_hours: 0,
+      weekday_overtime: 0,
+      weekend_overtime: 0,
+      base_salary: 0,
+      total_payable: 0,
+      deduction: 0,
+      actual_amount: 0,
+      details: '{}',
+      created_at: leave.createdAt,
+    };
+  };
+
   const attendanceRows = useMemo(() => {
-    return filteredRecords.filter((record) => {
+    const numericYear = Number(year);
+    const numericMonth = Number(month);
+    const baseRows = filteredRecords.filter((record) => {
       const details = parseAttendanceDetails(record);
-      return Object.values(details).some((value) => getAttendanceTimes(value).length > 0);
+      const hasPunch = Object.values(details).some((value) => getAttendanceTimes(value).length > 0);
+      return hasPunch || hasLeaveForRecordInMonth(record, numericYear, numericMonth);
     });
-  }, [filteredRecords]);
+
+    const matchedLeaveIds = new Set<number>();
+    baseRows.forEach((record) => {
+      leaveRecords.forEach((leave) => {
+        if (
+          leave.status === '已审核'
+          && isLeaveRangeOverlappingMonth(leave, numericYear, numericMonth)
+          && leaveMatchesRecord(leave, record)
+        ) {
+          matchedLeaveIds.add(leave.id);
+        }
+      });
+    });
+
+    const keyword = query.trim().toLowerCase();
+    const seenLeaveOnlyEmployees = new Set<string>();
+    const leaveOnlyRows = leaveRecords
+      .filter((leave) => leave.status === '已审核' && isLeaveRangeOverlappingMonth(leave, numericYear, numericMonth) && !matchedLeaveIds.has(leave.id))
+      .map((leave) => ({ leave, employee: findEmployeeForLeave(leave) }))
+      .filter(({ leave, employee }) => {
+        const leaveLocation = normalizeLocation(employee?.location || (leave.department.includes('车间') ? 'workshop' : 'office'));
+        if (canManage && leaveLocation !== location) return false;
+        if (canManage && keyword && !`${leave.employeeName} ${leave.department}`.toLowerCase().includes(keyword)) return false;
+        const key = leave.employeeId
+          ? `id:${leave.employeeId}`
+          : leave.idCard
+            ? `card:${leave.idCard}`
+            : `name:${leave.employeeName}:${leave.department}`;
+        if (seenLeaveOnlyEmployees.has(key)) return false;
+        seenLeaveOnlyEmployees.add(key);
+        return true;
+      })
+      .map(({ leave }) => createLeaveOnlyAttendanceRecord(leave, numericYear, numericMonth));
+
+    return [...baseRows, ...leaveOnlyRows];
+  }, [canManage, filteredRecords, leaveRecords, location, month, query, year]);
 
   const daysInSelectedMonth = useMemo(() => {
     const numericYear = Number(year);
@@ -240,9 +348,12 @@ export default function MobileSalaryPage({ canManage = false, user }: { canManag
       .filter((day) => getDayAttendanceTimes(record, day).length > 0).length;
   }, 0);
 
-  const attendanceTimeTotal = attendanceRows.reduce((sum, record) => {
+  const attendanceLeaveDayTotal = attendanceRows.reduce((sum, record) => {
     return sum + Array.from({ length: daysInSelectedMonth }, (_, index) => index + 1)
-      .reduce((daySum, day) => daySum + getDayAttendanceTimes(record, day).length, 0);
+      .filter((day) => {
+        const date = `${record.year}-${String(record.month_num).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return getLeaveRequestsForRecordDate(record, date).length > 0;
+      }).length;
   }, 0);
 
   const formatAttendanceTimes = (times: string[]) => {
@@ -406,8 +517,8 @@ export default function MobileSalaryPage({ canManage = false, user }: { canManag
               <div className="mt-1 text-xs text-slate-500">打卡天</div>
             </div>
             <div className="mobile-ios-tile rounded-2xl p-3">
-              <div className="text-xl font-bold">{attendanceTimeTotal}</div>
-              <div className="mt-1 text-xs text-slate-500">打卡次</div>
+              <div className="text-xl font-bold text-rose-600">{attendanceLeaveDayTotal}</div>
+              <div className="mt-1 text-xs text-slate-500">请假天</div>
             </div>
           </div>
         ) : (
@@ -598,6 +709,11 @@ export default function MobileSalaryPage({ canManage = false, user }: { canManag
           const punchDays = Array.from({ length: daysInSelectedMonth }, (_, index) => index + 1)
             .filter((day) => getDayAttendanceTimes(record, day).length > 0);
           const punchTimes = punchDays.reduce((sum, day) => sum + getDayAttendanceTimes(record, day).length, 0);
+          const leaveDays = Array.from({ length: daysInSelectedMonth }, (_, index) => index + 1)
+            .filter((day) => {
+              const date = `${record.year}-${String(record.month_num).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              return getLeaveRequestsForRecordDate(record, date).length > 0;
+            });
 
           return (
             <article
@@ -626,9 +742,9 @@ export default function MobileSalaryPage({ canManage = false, user }: { canManag
                   <div className="text-xs text-slate-400">打卡次</div>
                   <div className="mt-1 font-semibold text-slate-900">{punchTimes}</div>
                 </div>
-                <div className="rounded-2xl bg-blue-50 p-3">
-                  <div className="text-xs text-blue-500">查看</div>
-                  <div className="mt-1 font-semibold text-blue-700">明细</div>
+                <div className="rounded-2xl bg-rose-50 p-3">
+                  <div className="text-xs text-rose-500">请假天</div>
+                  <div className="mt-1 font-semibold text-rose-700">{leaveDays.length}</div>
                 </div>
               </div>
             </article>
@@ -695,21 +811,41 @@ export default function MobileSalaryPage({ canManage = false, user }: { canManag
           {selectedAttendanceRecord && (
             <div className="space-y-3 overflow-y-auto p-4">
               {Array.from({ length: daysInSelectedMonth }, (_, index) => index + 1)
-                .map((day) => ({ day, times: getDayAttendanceTimes(selectedAttendanceRecord, day) }))
-                .filter((item) => item.times.length > 0)
+                .map((day) => {
+                  const date = `${selectedAttendanceRecord.year}-${String(selectedAttendanceRecord.month_num).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  return {
+                    day,
+                    date,
+                    times: getDayAttendanceTimes(selectedAttendanceRecord, day),
+                    leaves: getLeaveRequestsForRecordDate(selectedAttendanceRecord, date),
+                  };
+                })
+                .filter((item) => item.times.length > 0 || item.leaves.length > 0)
                 .map((item) => (
                   <div key={item.day} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
                     <div className="mb-3 flex items-center justify-between">
                       <div className="flex items-center gap-2 font-semibold text-slate-950">
                         <CalendarDays className="h-4 w-4 text-blue-600" />
-                        {selectedAttendanceRecord.year}-{String(selectedAttendanceRecord.month_num).padStart(2, '0')}-{String(item.day).padStart(2, '0')}
+                        {item.date}
                       </div>
-                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{item.times.length} 次</span>
+                      <div className="flex shrink-0 gap-1">
+                        {item.times.length > 0 && (
+                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{item.times.length} 次</span>
+                        )}
+                        {item.leaves.length > 0 && (
+                          <span className="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">请假</span>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-2">
                       {formatAttendanceTimes(item.times).map((timeText, index) => (
                         <div key={`${item.day}-${index}`} className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800">
                           {timeText}
+                        </div>
+                      ))}
+                      {item.leaves.map((leave) => (
+                        <div key={`leave-${leave.id}`} className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+                          {formatAttendanceLeaveLabel(leave.duration)} · {leave.leaveType || '请假'} · {formatLeaveDateRange(leave)}
                         </div>
                       ))}
                     </div>

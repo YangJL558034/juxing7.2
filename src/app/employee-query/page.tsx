@@ -5,6 +5,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { formatChinaDate } from '@/lib/china-time';
+import {
+  formatAttendanceLeaveLabel,
+  isDateInLeaveRange,
+} from '@/lib/leave-records';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +36,7 @@ import {
   X
 } from 'lucide-react';
 import { logOperation, LogModules, LogActions } from '@/lib/log';
+import type { LeaveRequestRecord } from '@/types/leave-request';
 
 interface Employee {
   id: number;
@@ -230,12 +235,27 @@ const normalizeLocationLabel = (value?: string): string => {
   return value || '-';
 };
 
+const LAST_EMPLOYEE_QUERY_KEY = 'employee-query:last-identity';
+
+interface SavedEmployeeQuery {
+  name: string;
+  idCard: string;
+}
+
+const maskIdCard = (value: string): string => {
+  const text = value.trim();
+  if (text.length <= 8) return text;
+  return `${text.slice(0, 6)}********${text.slice(-4)}`;
+};
+
 export default function EmployeeQueryPage() {
   const [name, setName] = useState('');
   const [idCard, setIdCard] = useState('');
+  const [savedQuery, setSavedQuery] = useState<SavedEmployeeQuery | null>(null);
   const [searched, setSearched] = useState(false);
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [leaveRecords, setLeaveRecords] = useState<LeaveRequestRecord[]>([]);
   const [salaryRecords, setSalaryRecords] = useState<SalaryRecord[]>([]);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -250,9 +270,66 @@ export default function EmployeeQueryPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const canSearch = Boolean(name.trim() && idCard.trim() && idCard.trim().length >= 15);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(LAST_EMPLOYEE_QUERY_KEY);
+      if (!stored) return;
+
+      const parsed = JSON.parse(stored) as Partial<SavedEmployeeQuery>;
+      const savedName = typeof parsed.name === 'string' ? parsed.name.trim() : '';
+      const savedIdCard = typeof parsed.idCard === 'string' ? parsed.idCard.trim() : '';
+      if (!savedName || !savedIdCard) {
+        window.localStorage.removeItem(LAST_EMPLOYEE_QUERY_KEY);
+        return;
+      }
+
+      const nextSavedQuery: SavedEmployeeQuery = {
+        name: savedName,
+        idCard: savedIdCard,
+      };
+      setSavedQuery(nextSavedQuery);
+      setName((current) => current || nextSavedQuery.name);
+      setIdCard((current) => current || nextSavedQuery.idCard);
+    } catch {
+      window.localStorage.removeItem(LAST_EMPLOYEE_QUERY_KEY);
+    }
+  }, []);
+
+  const rememberQuery = (queryName: string, queryIdCard: string) => {
+    const nextSavedQuery: SavedEmployeeQuery = {
+      name: queryName,
+      idCard: queryIdCard,
+    };
+    setSavedQuery(nextSavedQuery);
+    try {
+      window.localStorage.setItem(LAST_EMPLOYEE_QUERY_KEY, JSON.stringify(nextSavedQuery));
+    } catch {
+      // 浏览器隐私模式可能禁用本地存储，查询本身不受影响。
+    }
+  };
+
+  const useSavedQuery = () => {
+    if (!savedQuery) return;
+    setName(savedQuery.name);
+    setIdCard(savedQuery.idCard);
+  };
+
+  const clearSavedQuery = () => {
+    setSavedQuery(null);
+    try {
+      window.localStorage.removeItem(LAST_EMPLOYEE_QUERY_KEY);
+    } catch {
+      // 忽略本地存储清理失败。
+    }
+  };
 
   const handleSearch = async () => {
-    if (!name.trim() || !idCard.trim()) {
+    const queryName = name.trim();
+    const queryIdCard = idCard.trim();
+
+    if (!queryName || !queryIdCard) {
       alert('请输入姓名和身份证号');
       return;
     }
@@ -261,21 +338,22 @@ export default function EmployeeQueryPage() {
     setNotFound(false);
     
     try {
-      const response = await fetch(`/api/employees/query?name=${encodeURIComponent(name.trim())}&idCard=${encodeURIComponent(idCard.trim())}`);
+      const response = await fetch(`/api/employees/query?name=${encodeURIComponent(queryName)}&idCard=${encodeURIComponent(queryIdCard)}`);
       const data = await response.json();
       
       if (data.success && data.employee) {
         setEmployee(data.employee);
         setSalaryRecords(data.salaryRecords || []);
         setSearched(true);
+        rememberQuery(queryName, queryIdCard);
         
         // 记录查询日志
         logOperation({
           module: LogModules.EMPLOYEE_QUERY,
           action: LogActions.VIEW,
           details: {
-            queryName: name.trim(),
-            queryIdCard: idCard.trim().replace(/(\d{6})\d{8}(\d{4})/, '$1********$2'), // 脱敏身份证
+            queryName,
+            queryIdCard: maskIdCard(queryIdCard),
             employeeId: data.employee.id,
             employeeName: data.employee.name,
           },
@@ -296,9 +374,11 @@ export default function EmployeeQueryPage() {
         // API 已返回解析好的打卡记录
         console.log('API返回打卡记录:', data.attendanceRecords?.length || 0, '条');
         setAttendanceRecords(data.attendanceRecords || []);
+        setLeaveRecords(data.leaveRecords || []);
       } else {
         setEmployee(null);
         setAttendanceRecords([]);
+        setLeaveRecords([]);
         setSalaryRecords([]);
         setNotFound(true);
         setSearched(true);
@@ -321,6 +401,58 @@ export default function EmployeeQueryPage() {
     });
     return grouped;
   }, [attendanceRecords]);
+
+  const getLeaveMonthKeys = (leave: LeaveRequestRecord) => {
+    const start = leave.leaveStartDate || leave.leaveDate;
+    const end = leave.leaveEndDate || start;
+    if (!start || !end) return [];
+
+    const keys: string[] = [];
+    const [startYear, startMonth] = start.split('-').map(Number);
+    const [endYear, endMonth] = end.split('-').map(Number);
+    if (!startYear || !startMonth || !endYear || !endMonth) return [];
+
+    let cursor = startYear * 12 + startMonth;
+    const endCursor = endYear * 12 + endMonth;
+    while (cursor <= endCursor) {
+      const year = Math.floor((cursor - 1) / 12);
+      const month = ((cursor - 1) % 12) + 1;
+      keys.push(`${year}-${String(month).padStart(2, '0')}`);
+      cursor += 1;
+    }
+    return keys;
+  };
+
+  const attendanceMonthKeys = useMemo(() => {
+    const keys = new Set(Object.keys(attendanceByMonth));
+    leaveRecords.forEach((leave) => {
+      getLeaveMonthKeys(leave).forEach((key) => keys.add(key));
+    });
+    return Array.from(keys).sort().reverse();
+  }, [attendanceByMonth, leaveRecords]);
+
+  const getDayLeaves = (date: string) => leaveRecords.filter((leave) =>
+    leave.status === '已审核' && isDateInLeaveRange(leave, date)
+  );
+
+  const leaveDayCount = useMemo(() => {
+    const dates = new Set<string>();
+    leaveRecords.forEach((leave) => {
+      const start = leave.leaveStartDate || leave.leaveDate;
+      const end = leave.leaveEndDate || start;
+      if (!start || !end) return;
+      const cursorDate = new Date(`${start}T00:00:00`);
+      const endDate = new Date(`${end}T00:00:00`);
+      while (cursorDate <= endDate) {
+        const year = cursorDate.getFullYear();
+        const month = String(cursorDate.getMonth() + 1).padStart(2, '0');
+        const day = String(cursorDate.getDate()).padStart(2, '0');
+        dates.add(`${year}-${month}-${day}`);
+        cursorDate.setDate(cursorDate.getDate() + 1);
+      }
+    });
+    return dates.size;
+  }, [leaveRecords]);
 
   // 获取某月某天的打卡记录
   const getDayAttendance = (monthKey: string, day: number): AttendanceRecord[] => {
@@ -558,7 +690,6 @@ export default function EmployeeQueryPage() {
   const yearOptions = Array.from({ length: 21 }, (_, i) => String(currentYear - 10 + i));
   const monthOptions = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
   const selectedMonthLabel = `${selectedYear}年${parseInt(selectedMonth)}月`;
-  const attendanceMonthKeys = Object.keys(attendanceByMonth).sort().reverse();
   const totalNormalHours = workHoursData.reduce((s, r) => s + r.normalHours, 0);
   const totalOvertimeHours = workHoursData.reduce((s, r) => s + r.overtimeHours, 0);
   const totalWorkHours = workHoursData.reduce((s, r) => s + r.totalHours, 0);
@@ -605,6 +736,28 @@ export default function EmployeeQueryPage() {
               </div>
 
               <div className="space-y-4 p-4 sm:p-5">
+                {savedQuery && (
+                  <div className="flex flex-col gap-2 rounded-lg border border-cyan-100 bg-cyan-50/70 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                    <button
+                      type="button"
+                      onClick={useSavedQuery}
+                      className="flex min-w-0 items-center gap-2 text-left text-cyan-900"
+                    >
+                      <Clock className="h-4 w-4 shrink-0 text-cyan-700" />
+                      <span className="truncate">上次查询：{savedQuery.name} · {maskIdCard(savedQuery.idCard)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearSavedQuery}
+                      className="self-start rounded-md p-1.5 text-cyan-700 transition-colors hover:bg-white/80 sm:self-auto"
+                      title="清除上次查询记录"
+                    >
+                      <X className="h-4 w-4" />
+                      <span className="sr-only">清除上次查询记录</span>
+                    </button>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700">姓名</label>
@@ -614,6 +767,10 @@ export default function EmployeeQueryPage() {
                         placeholder="请输入姓名"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && canSearch && !loading) void handleSearch();
+                        }}
+                        autoComplete="name"
                         className="h-12 rounded-lg border-stone-200 bg-white pl-10 text-base shadow-none focus-visible:ring-cyan-600/20"
                       />
                     </div>
@@ -626,6 +783,10 @@ export default function EmployeeQueryPage() {
                         placeholder="请输入身份证号"
                         value={idCard}
                         onChange={(e) => setIdCard(e.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && canSearch && !loading) void handleSearch();
+                        }}
+                        autoComplete="off"
                         className="h-12 rounded-lg border-stone-200 bg-white pl-10 text-base shadow-none focus-visible:ring-cyan-600/20"
                       />
                     </div>
@@ -636,7 +797,7 @@ export default function EmployeeQueryPage() {
                   <Button
                     onClick={handleSearch}
                     className="h-12 w-full rounded-lg bg-[#12343b] px-6 text-base font-medium hover:bg-[#0f2b31] sm:w-auto"
-                    disabled={loading || !name.trim() || !idCard.trim() || idCard.trim().length < 15}
+                    disabled={loading || !canSearch}
                   >
                     <Search className="mr-2 h-4 w-4" />
                     {loading ? '查询中...' : '查询'}
@@ -658,7 +819,7 @@ export default function EmployeeQueryPage() {
                 <p className="text-xs font-medium text-white/55">当前月份</p>
                 <p className="mt-2 text-2xl font-semibold">{selectedMonthLabel}</p>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="grid grid-cols-4 gap-2 text-center">
                 <div className="rounded-lg bg-white/10 px-2 py-3">
                   <p className="text-lg font-semibold">{attendanceRecords.length}</p>
                   <p className="text-[11px] text-white/65">打卡</p>
@@ -666,6 +827,10 @@ export default function EmployeeQueryPage() {
                 <div className="rounded-lg bg-white/10 px-2 py-3">
                   <p className="text-lg font-semibold">{salaryRecords.length}</p>
                   <p className="text-[11px] text-white/65">工资</p>
+                </div>
+                <div className="rounded-lg bg-white/10 px-2 py-3">
+                  <p className="text-lg font-semibold">{leaveDayCount}</p>
+                  <p className="text-[11px] text-white/65">请假</p>
                 </div>
                 <div className="rounded-lg bg-white/10 px-2 py-3">
                   <p className="text-lg font-semibold">{signedSalaryCount}</p>
@@ -741,19 +906,23 @@ export default function EmployeeQueryPage() {
                     </div>
                     <div className="min-w-0 text-left">
                       <p className="font-semibold text-slate-950">打卡记录</p>
-                      <p className="text-xs text-slate-500">{attendanceRecords.length} 条记录</p>
+                      <p className="text-xs text-slate-500">{attendanceRecords.length} 条打卡 · {leaveDayCount} 天请假</p>
                     </div>
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
                   {attendanceMonthKeys.length === 0 ? (
-                    <p className="rounded-xl bg-stone-50 py-8 text-center text-sm text-slate-500">暂无打卡记录</p>
+                    <p className="rounded-xl bg-stone-50 py-8 text-center text-sm text-slate-500">暂无打卡或请假记录</p>
                   ) : (
                     <Accordion type="single" collapsible className="space-y-3">
                       {attendanceMonthKeys.map(monthKey => {
                         const [y, m] = monthKey.split('-').map(Number);
                         const days = getDaysInMonth(y, m);
-                        const maxCount = getMaxAttendanceCount(monthKey);
+                        const monthLeaveCount = Array.from({ length: days }, (_, index) => {
+                          const date = `${monthKey}-${String(index + 1).padStart(2, '0')}`;
+                          return getDayLeaves(date).length > 0 ? date : '';
+                        }).filter(Boolean).length;
+                        const maxCount = Math.max(getMaxAttendanceCount(monthKey), monthLeaveCount > 0 ? 1 : 0);
                         
                         return (
                           <AccordionItem key={monthKey} value={monthKey} className="rounded-xl border border-stone-200 bg-[#fbfcfa] px-3">
@@ -763,7 +932,7 @@ export default function EmployeeQueryPage() {
                                 <span className="font-medium text-slate-900">{y}年{m}月</span>
                               </div>
                               <Badge variant="outline" className="mr-2 border-stone-200 bg-white text-slate-600">
-                                {attendanceByMonth[monthKey].length} 条
+                                {(attendanceByMonth[monthKey] || []).length} 条 · 请假 {monthLeaveCount} 天
                               </Badge>
                             </AccordionTrigger>
                             <AccordionContent>
@@ -797,21 +966,30 @@ export default function EmployeeQueryPage() {
                                           const records = getDayAttendance(monthKey, day);
                                           const record = records[row - 1];
                                           const time = record?.time;
+                                          const dateText = `${monthKey}-${String(day).padStart(2, '0')}`;
+                                          const dayLeaves = row === 1 ? getDayLeaves(dateText) : [];
+                                          const leaveLabel = [...new Set(dayLeaves.map((leave) => formatAttendanceLeaveLabel(leave.duration)))].join('、');
                                           // 检查是否有备注（括号内容）
                                           const hasNote = time && time.includes('（');
                                           const displayTime = time ? time.substring(0, 5) : '';
+                                          const hasLeave = dayLeaves.length > 0;
                                           
                                           return (
                                             <td 
                                               key={day} 
-                                              className={`border-r border-t border-stone-200 p-1.5 text-center ${isWeekend(y, m, day) ? 'bg-amber-50' : ''}`}
+                                              className={`border-r border-t border-stone-200 p-1.5 text-center ${isWeekend(y, m, day) ? 'bg-amber-50' : ''} ${hasLeave ? 'bg-rose-50 text-rose-600' : ''}`}
                                             >
-                                              {time ? (
+                                              {time || hasLeave ? (
                                                 <div className="flex flex-col items-center">
-                                                  <span className={hasNote ? 'font-medium text-cyan-700' : 'text-slate-800'}>{displayTime}</span>
+                                                  {time && <span className={hasNote ? 'font-medium text-cyan-700' : hasLeave ? 'text-rose-700' : 'text-slate-800'}>{displayTime}</span>}
                                                   {hasNote && (
                                                     <span className="max-w-[50px] truncate text-[10px] text-cyan-600">
                                                       {time.match(/（(.+?)）/)?.[1]?.substring(0, 4)}
+                                                    </span>
+                                                  )}
+                                                  {hasLeave && (
+                                                    <span className="max-w-[56px] truncate text-[10px] font-semibold text-rose-600">
+                                                      {leaveLabel}
                                                     </span>
                                                   )}
                                                 </div>

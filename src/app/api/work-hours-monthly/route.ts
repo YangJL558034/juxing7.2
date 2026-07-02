@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, query } from '@/lib/database';
 import { verifyToken } from '@/lib/auth';
 import { hasPermission } from '@/lib/permission-check';
+import {
+  parseLeaveRequestRow,
+  type LeaveRequestDbRow,
+} from '@/lib/leave-records';
 
 interface MonthlyRecordRow {
   [key: string]: unknown;
@@ -11,6 +15,14 @@ interface MonthlyRecordRow {
 
 interface EmployeeIdLookup {
   id: number;
+}
+
+interface EmployeeContext {
+  id: number;
+  name: string;
+  id_card: string | null;
+  department: string | null;
+  location?: string | null;
 }
 
 interface WorkHoursImportItem {
@@ -31,17 +43,17 @@ async function requireUser(request: NextRequest) {
 
 function findCurrentEmployee(user: { id: number; username: string; name: string }) {
   return db.prepare(`
-    SELECT id, name
+    SELECT id, name, id_card, department, location
     FROM employees
     WHERE user_id = ?
        OR name = ?
        OR employee_id = ?
     ORDER BY CASE WHEN user_id = ? THEN 0 WHEN name = ? THEN 1 ELSE 2 END
     LIMIT 1
-  `).get(user.id, user.name, user.username, user.id, user.name) as { id: number; name: string } | undefined;
+  `).get(user.id, user.name, user.username, user.id, user.name) as EmployeeContext | undefined;
 }
 
-function getEmployeeMonthlyRecords(employee: { id: number; name: string }, year?: string | null, month?: string | null) {
+function getEmployeeMonthlyRecords(employee: EmployeeContext, year?: string | null, month?: string | null) {
   const where = [
     'w.year BETWEEN 2000 AND 2100',
     'w.month_num BETWEEN 1 AND 12',
@@ -67,11 +79,62 @@ function getEmployeeMonthlyRecords(employee: { id: number; name: string }, year?
   }
 
   return db.prepare(`
-    SELECT w.*, ? as employee_id, COALESCE(NULLIF(w.employee_name, ''), ?) as employee_name
+    SELECT
+      w.*,
+      ? as employee_id,
+      COALESCE(NULLIF(w.employee_name, ''), ?) as employee_name,
+      COALESCE(NULLIF(w.department, ''), ?) as department,
+      ? as id_card,
+      COALESCE(NULLIF(w.location, ''), ?) as location
     FROM work_hours_monthly w
     WHERE ${where.join(' AND ')}
     ORDER BY w.year DESC, w.month_num DESC, w.id DESC
-  `).all(employee.id, employee.name, ...params);
+  `).all(employee.id, employee.name, employee.department || '', employee.id_card || '', employee.location || '', ...params);
+}
+
+function getApprovedLeaveRequests(year?: string | null, month?: string | null, employee?: EmployeeContext | null) {
+  const where = [
+    'deleted_at IS NULL',
+    "status = '已审核'",
+  ];
+  const params: unknown[] = [];
+
+  if (year && month) {
+    const normalizedMonth = String(parseInt(month, 10)).padStart(2, '0');
+    const daysInMonth = new Date(parseInt(year, 10), parseInt(normalizedMonth, 10), 0).getDate();
+    where.push(`
+      COALESCE(leave_start_date, leave_date) <= ?
+      AND COALESCE(leave_end_date, leave_start_date, leave_date) >= ?
+    `);
+    params.push(`${year}-${normalizedMonth}-${String(daysInMonth).padStart(2, '0')}`, `${year}-${normalizedMonth}-01`);
+  } else if (year) {
+    where.push(`
+      COALESCE(leave_start_date, leave_date) <= ?
+      AND COALESCE(leave_end_date, leave_start_date, leave_date) >= ?
+    `);
+    params.push(`${year}-12-31`, `${year}-01-01`);
+  }
+
+  if (employee) {
+    where.push(`(
+      employee_id = ?
+      OR id_card = ?
+      OR (
+        employee_name = ?
+        AND (department = '' OR department = ?)
+      )
+    )`);
+    params.push(employee.id, employee.id_card || '', employee.name, employee.department || '');
+  }
+
+  const rows = db.prepare(`
+    SELECT *
+    FROM leave_request_records
+    WHERE ${where.join(' AND ')}
+    ORDER BY leave_date DESC, created_at DESC, id DESC
+  `).all(...params) as LeaveRequestDbRow[];
+
+  return rows.map(parseLeaveRequestRow);
 }
 
 // 获取工时月份汇总
@@ -91,16 +154,25 @@ export async function GET(request: NextRequest) {
     if (!canManageSalary) {
       const employee = findCurrentEmployee(user);
       const records = employee ? getEmployeeMonthlyRecords(employee, year, month) : [];
-      return NextResponse.json({ success: true, data: records, selfOnly: true });
+      const leaveRecords = employee ? getApprovedLeaveRequests(year, month, employee) : [];
+      return NextResponse.json({ success: true, data: records, leaveRecords, selfOnly: true });
     }
     
     let records;
+    let scopedEmployee: EmployeeContext | null = null;
     if (employeeId) {
       const parsedEmployeeId = parseInt(employeeId, 10);
-      const employee = db.prepare('SELECT name FROM employees WHERE id = ?').get(parsedEmployeeId) as { name: string } | undefined;
+      const employee = db.prepare('SELECT id, name, id_card, department, location FROM employees WHERE id = ?').get(parsedEmployeeId) as EmployeeContext | undefined;
       if (employee?.name) {
+        scopedEmployee = employee;
         records = db.prepare(`
-          SELECT w.*, ? as employee_id, COALESCE(NULLIF(w.employee_name, ''), ?) as employee_name
+          SELECT
+            w.*,
+            ? as employee_id,
+            COALESCE(NULLIF(w.employee_name, ''), ?) as employee_name,
+            COALESCE(NULLIF(w.department, ''), ?) as department,
+            ? as id_card,
+            COALESCE(NULLIF(w.location, ''), ?) as location
           FROM work_hours_monthly w
           WHERE w.year BETWEEN 2000 AND 2100
             AND w.month_num BETWEEN 1 AND 12
@@ -114,7 +186,7 @@ export async function GET(request: NextRequest) {
               )
             )
           ORDER BY w.year DESC, w.month_num DESC, w.id DESC
-        `).all(parsedEmployeeId, employee.name, parsedEmployeeId, employee.name);
+        `).all(parsedEmployeeId, employee.name, employee.department || '', employee.id_card || '', employee.location || '', parsedEmployeeId, employee.name);
       } else {
         records = query.getWorkHoursMonthlyByEmployee.all(parsedEmployeeId);
       }
@@ -126,7 +198,10 @@ export async function GET(request: NextRequest) {
       records = query.getWorkHoursMonthly.all();
     }
     
-    return NextResponse.json({ success: true, data: records });
+    const leaveRecords = employeeId
+      ? (scopedEmployee ? getApprovedLeaveRequests(year, month, scopedEmployee) : [])
+      : getApprovedLeaveRequests(year, month, null);
+    return NextResponse.json({ success: true, data: records, leaveRecords });
   } catch (error) {
     console.error('Get work hours monthly error:', error);
     return NextResponse.json({ error: '获取工时数据失败' }, { status: 500 });

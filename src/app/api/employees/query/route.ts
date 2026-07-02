@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, db } from '@/lib/database';
+import {
+  parseLeaveRequestRow,
+  type LeaveRequestDbRow,
+} from '@/lib/leave-records';
 
 interface MonthlyRecordRow {
   [key: string]: unknown;
@@ -118,6 +122,22 @@ export async function GET(request: NextRequest) {
       return a.time.localeCompare(b.time);
     });
 
+    const leaveRows = db.prepare(`
+      SELECT *
+      FROM leave_request_records
+      WHERE deleted_at IS NULL
+        AND status = '已审核'
+        AND (
+          employee_id = ?
+          OR id_card = ?
+          OR (
+            employee_name = ?
+            AND (department = '' OR department = ?)
+          )
+        )
+      ORDER BY leave_date DESC, created_at DESC, id DESC
+    `).all(employee.id, employee.id_card || '', employee.name, employee.department || '') as LeaveRequestDbRow[];
+
     // 用员工表的部门信息覆盖工资记录的部门信息（工资表部门可能为空）
     const salaryRecordsWithDept = monthlyRecords.map((record) => ({
       ...record,
@@ -130,7 +150,8 @@ export async function GET(request: NextRequest) {
       workRecords: [],
       salaryRecords: salaryRecordsWithDept,
       monthlyRecords: salaryRecordsWithDept,
-      attendanceRecords: attendanceRecords
+      attendanceRecords: attendanceRecords,
+      leaveRecords: leaveRows.map(parseLeaveRequestRow),
     });
   } catch (error) {
     console.error('Query employee error:', error);
