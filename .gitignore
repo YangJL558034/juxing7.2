@@ -33,6 +33,11 @@ coverage
 storybook-static
 public/uploads/
 
+# Android native build outputs
+android-native/build/
+android-native/*.keystore
+android-native/*.jks
+
 # Package manager artifacts
 package-lock.json
 yarn.lock

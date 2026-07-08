@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { io, type Socket } from 'socket.io-client';
 import { Header, Sidebar } from '@/components/layout';
 import { Dashboard } from '@/components/pages/Dashboard';
 import { TodoPage } from '@/components/pages/TodoPage';
@@ -32,10 +33,11 @@ import PermissionPage from '@/components/pages/PermissionPage';
 import ApprovalCenter from '@/components/pages/ApprovalCenter';
 import FinanceReviewPage from '@/components/pages/FinanceReviewPage';
 import AIChatPage from '@/app/ai-chat/page';
+import RealtimeChatPage from '@/components/pages/RealtimeChatPage';
 import NotificationCenterPage from '@/components/pages/NotificationCenterPage';
 import { logOperation, LogActions } from '@/lib/log';
 
-type PageKey = 'dashboard' | 'taskmanage' | 'distribution' | 'todo' | 'leads' | 'customers' | 'contacts' | 'contracts' | 'invoices' | 'followup' | 'products' | 'finance' | 'tasks' | 'salary' | 'generate' | 'ai-chat' | 'assets' | 'organization' | 'personnel' | 'administration' | 'human-resources' | 'permission' | 'purchase-requests' | 'expense-claims' | 'approval-center' | 'finance-review' | 'smtp' | 'usermanage' | 'operation-logs' | 'settings' | 'notification-center';
+type PageKey = 'dashboard' | 'taskmanage' | 'distribution' | 'todo' | 'leads' | 'customers' | 'contacts' | 'contracts' | 'invoices' | 'followup' | 'products' | 'finance' | 'tasks' | 'salary' | 'generate' | 'ai-chat' | 'realtime-chat' | 'assets' | 'organization' | 'personnel' | 'administration' | 'human-resources' | 'permission' | 'purchase-requests' | 'expense-claims' | 'approval-center' | 'finance-review' | 'smtp' | 'usermanage' | 'operation-logs' | 'settings' | 'notification-center';
 
 const pageNames: Record<string, string> = {
   dashboard: '仪表板',
@@ -58,6 +60,7 @@ const pageNames: Record<string, string> = {
   'salary-attendance': '打卡记录',
   generate: '工资生成',
   'ai-chat': 'AI聊天',
+  'realtime-chat': '实时聊天',
   assets: '资产管理',
   'assets-overview': '资产总览',
   organization: '组织管理',
@@ -152,10 +155,18 @@ interface MainLayoutProps {
     id: number;
     username: string;
     name: string;
+    avatar?: string;
     role: string;
     department?: string;
   };
 }
+
+type RealtimeChatUnreadResponse = {
+  success?: boolean;
+  data?: {
+    unreadCount?: number;
+  };
+};
 
 export function MainLayout({ user }: MainLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -170,6 +181,24 @@ export function MainLayout({ user }: MainLayoutProps) {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [showLoginNotification, setShowLoginNotification] = useState(false);
   const [loginUnreadCount, setLoginUnreadCount] = useState(0);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+
+  const refreshChatUnreadCount = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      const response = await fetch('/api/realtime-chat/unread', {
+        cache: 'no-store',
+        credentials: 'include',
+      });
+      const result = (await response.json().catch(() => ({}))) as RealtimeChatUnreadResponse;
+      if (response.ok && result.success !== false) {
+        setChatUnreadCount(Number(result.data?.unreadCount || 0));
+      }
+    } catch (error) {
+      console.error('获取实时聊天未读数失败:', error);
+    }
+  }, [user?.id]);
 
   // 登录时检查未读消息
   useEffect(() => {
@@ -201,6 +230,50 @@ export function MainLayout({ user }: MainLayoutProps) {
     }
   }, [user]);
 
+  useEffect(() => {
+    void refreshChatUnreadCount();
+    const intervalId = window.setInterval(() => void refreshChatUnreadCount(), 8000);
+    const handleFocus = () => void refreshChatUnreadCount();
+    const handleUnreadChanged = () => void refreshChatUnreadCount();
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('realtime-chat-unread-changed', handleUnreadChanged);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('realtime-chat-unread-changed', handleUnreadChanged);
+    };
+  }, [refreshChatUnreadCount]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const socket: Socket = io({
+      path: '/socket.io',
+      withCredentials: true,
+      transports: ['websocket', 'polling'],
+    });
+    const pendingTimers = new Set<number>();
+    const refreshSoon = () => {
+      const timerId = window.setTimeout(() => {
+        pendingTimers.delete(timerId);
+        void refreshChatUnreadCount();
+      }, 350);
+      pendingTimers.add(timerId);
+    };
+
+    socket.on('chat:message', refreshSoon);
+    socket.on('chat:message-recalled', refreshSoon);
+    socket.on('chat:conversation-updated', refreshSoon);
+    socket.on('chat:conversation-removed', refreshSoon);
+
+    return () => {
+      pendingTimers.forEach((timerId) => window.clearTimeout(timerId));
+      socket.disconnect();
+    };
+  }, [refreshChatUnreadCount, user?.id]);
+
   // 检测屏幕尺寸
   useEffect(() => {
     const checkMobile = () => {
@@ -220,7 +293,7 @@ export function MainLayout({ user }: MainLayoutProps) {
         setPermissions([
           'dashboard', 'taskmanage', 'distribution', 'todo', 'leads', 
           'customers', 'tasks', 'generate', 'assets', 'departments', 'usermanage', 'personnel', 'administration', 'human-resources', 'database-backup', 'settings',
-          'organization', 'permission', 'purchase-requests', 'expense-claims', 
+          'organization', 'permission', 'purchase-requests', 'expense-claims', 'realtime-chat', 'smtp',
           'approval-center', 'finance-review', 'notification-center'
         ]);
         return;
@@ -416,6 +489,8 @@ export function MainLayout({ user }: MainLayoutProps) {
         return <GeneratePage />;
       case 'ai-chat':
         return <AIChatPage user={user} />;
+      case 'realtime-chat':
+        return <RealtimeChatPage user={user} />;
       case 'assets':
         return <AssetsPage selectedType={activeAssetsType} />;
       case 'organization':
@@ -506,6 +581,7 @@ export function MainLayout({ user }: MainLayoutProps) {
         isMobile={false}
         permissions={permissions}
         isAdmin={user?.role === 'admin'}
+        unreadBadges={{ 'realtime-chat': chatUnreadCount }}
       />
       
       {/* 移动端侧边栏 */}
@@ -519,6 +595,7 @@ export function MainLayout({ user }: MainLayoutProps) {
         onMobileClose={() => setMobileSidebarOpen(false)}
         permissions={permissions}
         isAdmin={user?.role === 'admin'}
+        unreadBadges={{ 'realtime-chat': chatUnreadCount }}
       />
       
       <main

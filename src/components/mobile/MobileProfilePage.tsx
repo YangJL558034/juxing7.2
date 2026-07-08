@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { KeyRound, LogOut, Pencil, ShieldCheck, UserRound } from 'lucide-react';
+import { Camera, KeyRound, LogOut, Pencil, ShieldCheck, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -19,6 +19,7 @@ type AppUser = {
   id: number;
   username: string;
   name: string;
+  avatar?: string;
   role: string;
   department?: string;
 };
@@ -32,10 +33,12 @@ function roleLabel(role?: string) {
 
 export default function MobileProfilePage({ user }: { user?: AppUser }) {
   const router = useRouter();
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [displayUsername, setDisplayUsername] = useState(user?.username || '');
   const [displayName, setDisplayName] = useState(user?.name || '');
+  const [avatar, setAvatar] = useState(user?.avatar || '');
   const [username, setUsername] = useState(user?.username || '');
   const [name, setName] = useState(user?.name || '');
   const [oldPassword, setOldPassword] = useState('');
@@ -43,6 +46,7 @@ export default function MobileProfilePage({ user }: { user?: AppUser }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const initials = useMemo(() => {
     return (displayName || displayUsername || '我').trim().slice(0, 1);
@@ -51,6 +55,30 @@ export default function MobileProfilePage({ user }: { user?: AppUser }) {
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     router.push('/login?next=/mobile');
+  };
+
+  const uploadAvatar = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch('/api/user/avatar', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      const result = await response.json().catch(() => ({})) as { success?: boolean; data?: { avatar?: string }; error?: string };
+      if (!response.ok || !result.success || !result.data?.avatar) {
+        throw new Error(result.error || '头像上传失败');
+      }
+      setAvatar(result.data.avatar);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '头像上传失败');
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
   };
 
   const saveProfile = async () => {
@@ -127,11 +155,31 @@ export default function MobileProfilePage({ user }: { user?: AppUser }) {
 
   return (
     <div className="space-y-4">
+      <input
+        ref={avatarInputRef}
+        hidden
+        type="file"
+        accept="image/*"
+        onChange={(event) => void uploadAvatar(event.target.files?.[0])}
+      />
+
       <section className="mobile-ios-glass rounded-[34px] p-5 text-slate-950">
         <div className="flex items-center gap-4">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[28px] bg-blue-600 text-3xl font-bold text-white shadow-lg shadow-blue-600/25 ring-1 ring-white/55">
-            {initials}
-          </div>
+          <button
+            type="button"
+            className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[28px] bg-blue-600 text-3xl font-bold text-white shadow-lg shadow-blue-600/25 ring-1 ring-white/55"
+            onClick={() => avatarInputRef.current?.click()}
+            disabled={uploadingAvatar}
+          >
+            {avatar ? (
+              <img src={avatar} alt="头像" className="h-full w-full object-cover" />
+            ) : (
+              initials
+            )}
+            <span className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-white text-blue-600 shadow">
+              <Camera className="h-4 w-4" />
+            </span>
+          </button>
           <div className="min-w-0 flex-1">
             <div className="truncate text-2xl font-bold">{displayName || displayUsername || '用户'}</div>
             <div className="mt-1 truncate text-sm text-slate-600">{displayUsername || '-'}</div>
@@ -144,6 +192,20 @@ export default function MobileProfilePage({ user }: { user?: AppUser }) {
       </section>
 
       <section className="rounded-[30px] border border-white/70 bg-white/90 p-2 shadow-sm backdrop-blur">
+        <button
+          type="button"
+          className="flex w-full items-center gap-3 rounded-[24px] px-4 py-4 text-left active:bg-slate-100"
+          onClick={() => avatarInputRef.current?.click()}
+          disabled={uploadingAvatar}
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
+            <Camera className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-base font-semibold text-slate-950">修改头像</span>
+            <span className="mt-0.5 block text-sm text-slate-500">上传自己的聊天头像</span>
+          </span>
+        </button>
         <button
           type="button"
           className="flex w-full items-center gap-3 rounded-[24px] px-4 py-4 text-left active:bg-slate-100"

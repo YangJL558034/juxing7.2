@@ -1,7 +1,7 @@
-import { cookies } from 'next/headers';
+﻿import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import MobileSystemShell from '@/components/mobile/MobileSystemShell';
-import { verifyToken } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -14,7 +14,7 @@ export default async function MobilePage() {
     redirect('/login?next=/mobile');
   }
 
-  const user = await verifyToken(authCookie.value);
+  const user = await getCurrentUser(cookieStore.toString());
 
   if (!user || !user.id) {
     redirect('/login?next=/mobile');

@@ -2017,6 +2017,90 @@ export function initDatabase(dbInstance: Database.Database) {
     )
   `);
 
+  dbInstance.exec(`
+    CREATE TABLE IF NOT EXISTS im_conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'group',
+      created_by INTEGER NOT NULL,
+      created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+      updated_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+      deleted_at TEXT,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS im_conversation_members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      muted_until TEXT,
+      do_not_disturb INTEGER NOT NULL DEFAULT 0,
+      added_by INTEGER,
+      created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+      UNIQUE(conversation_id, user_id),
+      FOREIGN KEY (conversation_id) REFERENCES im_conversations(id),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (added_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS im_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      sender_id INTEGER NOT NULL,
+      sender_name TEXT NOT NULL,
+      message_type TEXT NOT NULL DEFAULT 'text',
+      content TEXT,
+      recalled INTEGER NOT NULL DEFAULT 0,
+      recalled_at TEXT,
+      recalled_by INTEGER,
+      created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+      updated_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+      FOREIGN KEY (conversation_id) REFERENCES im_conversations(id),
+      FOREIGN KEY (sender_id) REFERENCES users(id),
+      FOREIGN KEY (recalled_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS im_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id INTEGER NOT NULL,
+      conversation_id INTEGER NOT NULL,
+      file_name TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      file_ext TEXT,
+      size INTEGER NOT NULL,
+      compressed_size INTEGER NOT NULL,
+      storage_path TEXT NOT NULL,
+      is_image INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+      FOREIGN KEY (message_id) REFERENCES im_messages(id),
+      FOREIGN KEY (conversation_id) REFERENCES im_conversations(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS im_conversation_reads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      last_read_message_id INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime')),
+      UNIQUE(conversation_id, user_id),
+      FOREIGN KEY (conversation_id) REFERENCES im_conversations(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_im_members_conversation ON im_conversation_members(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_im_members_user ON im_conversation_members(user_id);
+    CREATE INDEX IF NOT EXISTS idx_im_messages_conversation ON im_messages(conversation_id, id);
+    CREATE INDEX IF NOT EXISTS idx_im_attachments_message ON im_attachments(message_id);
+    CREATE INDEX IF NOT EXISTS idx_im_reads_user ON im_conversation_reads(user_id);
+  `);
+
+  ensureColumns(dbInstance, 'im_conversation_members', [
+    { name: 'muted_until', definition: 'TEXT' },
+    { name: 'do_not_disturb', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  ]);
+
   // 确保 smtp_config 表有所有必要的列
   try {
     const smtpCols = dbInstance.prepare("PRAGMA table_info(smtp_config)").all() as { name: string }[];
@@ -2086,6 +2170,7 @@ export function initDatabase(dbInstance: Database.Database) {
     { code: 'salary', name: '工资工时查询', description: '查询工资工时信息' },
     { code: 'generate', name: '生成管理', description: '生成内容管理' },
     { code: 'ai-chat', name: 'AI对话', description: 'AI对话功能' },
+    { code: 'realtime-chat', name: '实时聊天', description: '群聊消息、图片和附件' },
     { code: 'smtp', name: '邮件配置', description: '邮件发送配置' },
     { code: 'database-backup', name: '数据库备份', description: '备份和恢复系统数据库' },
     { code: 'operation-logs', name: '操作日志', description: '查看操作日志' },

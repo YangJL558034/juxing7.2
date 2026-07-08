@@ -1,8 +1,14 @@
 import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
+import { setupChatSocket } from './lib/chat-socket';
 
-const dev = process.env.COZE_PROJECT_ENV !== 'PROD';
+const dev =
+  process.argv.includes('--dev') ||
+  process.env.npm_lifecycle_event === 'dev' ||
+  (process.env.NODE_ENV !== 'production' &&
+    process.env.COZE_PROJECT_ENV !== 'PROD' &&
+    process.env.npm_lifecycle_event !== 'start');
 const hostname = process.env.HOSTNAME || 'localhost';
 const port = parseInt(process.env.PORT || '5000', 10);
 
@@ -21,6 +27,9 @@ app.prepare().then(() => {
       res.end('Internal server error');
     }
   });
+
+  setupChatSocket(server);
+
   server.once('error', err => {
     console.error(err);
     process.exit(1);

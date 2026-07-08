@@ -333,6 +333,7 @@ export interface NavMenuItem {
 
 export const navMenuItems: NavMenuItem[] = [
   { key: 'dashboard', label: '仪表盘', icon: 'LayoutDashboard' },
+  { key: 'realtime-chat', label: '实时聊天', icon: 'MessageSquare' },
   
   { 
     key: 'customer', 

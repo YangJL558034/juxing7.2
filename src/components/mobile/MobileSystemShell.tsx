@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Bell,
@@ -43,10 +43,21 @@ import MobileProfilePage from '@/components/mobile/MobileProfilePage';
 import MobileBusinessPage, { type MobileBusinessKey } from '@/components/mobile/MobileBusinessPage';
 import MobileSettingsPage from '@/components/mobile/MobileSettingsPage';
 import MobileAiChatPage from '@/components/mobile/MobileAiChatPage';
+import RealtimeChatPage from '@/components/pages/RealtimeChatPage';
 import { NotificationBell } from '@/components/layout/NotificationBell';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Sheet,
   SheetContent,
@@ -76,6 +87,7 @@ const pageKeys = [
   'salary',
   'generate',
   'ai-chat',
+  'realtime-chat',
   'assets',
   'organization',
   'personnel',
@@ -100,6 +112,7 @@ type AppUser = {
   id: number;
   username: string;
   name: string;
+  avatar?: string;
   role: string;
   department?: string;
 };
@@ -118,7 +131,7 @@ type MobileMenuGroup = {
 };
 
 const pageKeySet = new Set<string>(pageKeys);
-const publicMobilePages = new Set<PageKey>(['dashboard', 'personnel', 'administration', 'salary']);
+const publicMobilePages = new Set<PageKey>(['dashboard', 'realtime-chat', 'personnel', 'administration', 'salary']);
 
 const pageTitleMap: Record<PageKey, string> = {
   dashboard: '仪表盘',
@@ -137,6 +150,7 @@ const pageTitleMap: Record<PageKey, string> = {
   salary: '工资工时',
   generate: '生成管理',
   'ai-chat': 'AI 对话',
+  'realtime-chat': '聊天',
   assets: '资产管理',
   organization: '组织管理',
   personnel: '人事管理',
@@ -180,6 +194,7 @@ const modulePermissionMap: Record<PageKey, string> = {
   salary: 'salary',
   generate: 'generate',
   'ai-chat': 'ai-chat',
+  'realtime-chat': 'realtime-chat',
   assets: 'assets',
   organization: 'organization',
   personnel: 'personnel',
@@ -224,7 +239,7 @@ const iconMap: Record<string, React.ElementType> = {
 };
 
 const bottomNavItems: Array<{ key: ActivePageKey; label: string; icon: React.ElementType }> = [
-  { key: 'dashboard', label: '首页', icon: LayoutDashboard },
+  { key: 'realtime-chat', label: '首页', icon: MessageSquare },
   { key: 'personnel', label: '人事', icon: Users },
   { key: 'administration', label: '行政', icon: Home },
   { key: 'salary', label: '工资', icon: Clock },
@@ -324,6 +339,8 @@ function renderPage(
       return <MobileBusinessPage moduleKey="generate" />;
     case 'ai-chat':
       return <MobileAiChatPage user={user} />;
+    case 'realtime-chat':
+      return <RealtimeChatPage user={user} compact />;
     case 'assets':
       return <MobileAssetsPage />;
     case 'organization':
@@ -361,16 +378,89 @@ function renderPage(
 
 export default function MobileSystemShell({ user }: { user?: AppUser }) {
   const router = useRouter();
-  const [activePage, setActivePage] = useState<ActivePageKey>('dashboard');
+  const [activePage, setActivePage] = useState<ActivePageKey>('realtime-chat');
   const [permissions, setPermissions] = useState<string[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [backExitHint, setBackExitHint] = useState('');
   const [query, setQuery] = useState('');
+  const drawerOpenRef = useRef(drawerOpen);
+  const logoutConfirmOpenRef = useRef(logoutConfirmOpen);
+  const lastBackAtRef = useRef(0);
+  const backHintTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const savedPage = window.localStorage.getItem('mobile-active-page');
-    if (savedPage === 'profile' || (savedPage && isPageKey(savedPage))) {
+    if (savedPage && savedPage !== 'dashboard' && (savedPage === 'profile' || isPageKey(savedPage))) {
       setActivePage(savedPage);
     }
+  }, []);
+
+  useEffect(() => {
+    drawerOpenRef.current = drawerOpen;
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    logoutConfirmOpenRef.current = logoutConfirmOpen;
+  }, [logoutConfirmOpen]);
+
+  useEffect(() => {
+    const clearBackHint = () => {
+      lastBackAtRef.current = 0;
+      setBackExitHint('');
+      if (backHintTimerRef.current !== null) {
+        window.clearTimeout(backHintTimerRef.current);
+        backHintTimerRef.current = null;
+      }
+    };
+
+    const pushBackGuard = () => {
+      const currentState = window.history.state;
+      const baseState =
+        typeof currentState === 'object' && currentState !== null ? currentState : {};
+      window.history.pushState({ ...baseState, mobileBackGuard: true }, '', window.location.href);
+    };
+
+    pushBackGuard();
+
+    const handlePopState = () => {
+      pushBackGuard();
+
+      if (logoutConfirmOpenRef.current) {
+        setLogoutConfirmOpen(false);
+        clearBackHint();
+        return;
+      }
+
+      if (drawerOpenRef.current) {
+        setDrawerOpen(false);
+        clearBackHint();
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastBackAtRef.current <= 1800) {
+        clearBackHint();
+        setLogoutConfirmOpen(true);
+        return;
+      }
+
+      lastBackAtRef.current = now;
+      setBackExitHint('再按一次返回，将提示退出登录');
+      if (backHintTimerRef.current !== null) {
+        window.clearTimeout(backHintTimerRef.current);
+      }
+      backHintTimerRef.current = window.setTimeout(clearBackHint, 1800);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      if (backHintTimerRef.current !== null) {
+        window.clearTimeout(backHintTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -479,6 +569,7 @@ export default function MobileSystemShell({ user }: { user?: AppUser }) {
   };
 
   const handleLogout = async () => {
+    setLogoutConfirmOpen(false);
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     router.push('/login?next=/mobile');
   };
@@ -567,6 +658,33 @@ export default function MobileSystemShell({ user }: { user?: AppUser }) {
           })}
         </div>
       </nav>
+
+      {backExitHint && (
+        <button
+          type="button"
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.3rem)] left-1/2 z-50 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full bg-slate-950/90 px-4 py-2 text-sm font-medium text-white shadow-xl"
+          onClick={() => setBackExitHint('')}
+        >
+          {backExitHint}
+        </button>
+      )}
+
+      <AlertDialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
+        <AlertDialogContent className="max-w-[calc(100vw-2rem)] rounded-[28px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>退出登录？</AlertDialogTitle>
+            <AlertDialogDescription>
+              你连续按了两次返回。确认后会退出当前账号并回到登录页。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="grid grid-cols-2 gap-2 sm:flex">
+            <AlertDialogCancel className="mt-0 rounded-[18px]">继续使用</AlertDialogCancel>
+            <AlertDialogAction className="rounded-[18px] bg-red-600 hover:bg-red-700" onClick={() => void handleLogout()}>
+              退出登录
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="bottom" className="max-h-[88dvh] rounded-t-[32px] border-white/70 bg-white/95 p-0 backdrop-blur-2xl">

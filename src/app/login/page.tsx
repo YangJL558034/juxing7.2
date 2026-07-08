@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole, UserRound } from 'lucide-react';
 
 function safeNextPath() {
   const params = new URLSearchParams(window.location.search);
@@ -9,24 +9,32 @@ function safeNextPath() {
   return nextPath.startsWith('/') && !nextPath.startsWith('//') ? nextPath : '/';
 }
 
+function JuxingMark({ className = '' }: { className?: string }) {
+  return (
+    <div className={`relative grid place-items-center ${className}`} aria-hidden="true">
+      <div className="absolute inset-[14%] rounded-[30%] bg-blue-600" />
+      <div className="absolute left-[8%] top-[18%] h-[26%] w-[45%] -rotate-[35deg] rounded-sm bg-blue-500" />
+      <div className="absolute right-[8%] top-[16%] h-[24%] w-[38%] rotate-[35deg] rounded-sm bg-sky-400" />
+      <div className="absolute bottom-[14%] left-[12%] h-[24%] w-[38%] rotate-[35deg] rounded-sm bg-blue-500" />
+      <div className="absolute bottom-[13%] right-[14%] h-[28%] w-[34%] -rotate-[35deg] rounded-sm bg-blue-600" />
+      <div className="absolute inset-[34%] rounded-full bg-white" />
+    </div>
+  );
+}
+
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
-  const [mobileEntry, setMobileEntry] = useState(false);
 
   useEffect(() => {
     const rememberedUsername = window.localStorage.getItem('rememberedUsername');
     if (rememberedUsername) {
       setUsername(rememberedUsername);
-      setRememberMe(true);
     }
-
-    const nextPath = safeNextPath();
-    setMobileEntry(nextPath.startsWith('/mobile') || window.matchMedia('(max-width: 768px)').matches);
   }, []);
 
   const handleLogin = async (event: FormEvent) => {
@@ -48,11 +56,7 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (data.success) {
-        if (rememberMe) {
-          window.localStorage.setItem('rememberedUsername', username);
-        } else {
-          window.localStorage.removeItem('rememberedUsername');
-        }
+        window.localStorage.setItem('rememberedUsername', username);
         if (data.token) {
           window.localStorage.setItem('token', data.token);
         }
@@ -73,12 +77,13 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-dvh overflow-hidden bg-[#f5f7fb] text-slate-950">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_10%,rgba(59,130,246,0.18),transparent_28%),radial-gradient(circle_at_88%_20%,rgba(14,165,233,0.16),transparent_26%),linear-gradient(180deg,#ffffff_0%,#f5f7fb_42%,#edf3ff_100%)]" />
+    <main className="relative min-h-dvh overflow-hidden bg-[#f6fbff] text-slate-950">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_24%_18%,rgba(37,99,235,0.10),transparent_30%),radial-gradient(circle_at_80%_20%,rgba(125,211,252,0.16),transparent_28%),linear-gradient(180deg,#f9fcff_0%,#f5faff_48%,#fafdff_100%)]" />
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 h-1/2 bg-[radial-gradient(ellipse_at_bottom,rgba(226,246,255,0.84),transparent_68%)]" />
 
       {loginSuccess && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
-          <div className="login-success-card w-full max-w-xs rounded-[32px] bg-white p-7 text-center shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 backdrop-blur-sm">
+          <div className="login-success-card w-full max-w-xs rounded-2xl bg-white p-7 text-center shadow-2xl">
             <div className="login-success-check mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 text-white">
               <CheckCircle2 className="h-10 w-10" />
             </div>
@@ -88,91 +93,75 @@ export default function LoginPage() {
         </div>
       )}
 
-      <div className="relative z-10 flex min-h-dvh items-center justify-center px-5 py-[max(1.1rem,env(safe-area-inset-top))]">
-        <section className="w-full max-w-md">
-          <div className="mobile-ios-glass mb-4 rounded-[32px] p-4 text-slate-950">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-lg font-bold shadow-lg shadow-blue-600/30">
-                聚
-              </div>
-              <div className="rounded-full border border-white/70 bg-white/[0.58] px-3 py-1 text-xs font-medium text-slate-600 backdrop-blur-xl">
-                {mobileEntry ? '移动端登录' : '系统登录'}
-              </div>
-            </div>
-            <h1 className="mt-5 text-2xl font-bold tracking-normal">聚星数据平台</h1>
-            <p className="mt-1.5 text-sm leading-6 text-slate-600">
-              登录后进入移动端后台，数据和电脑端实时同步。
-            </p>
+      <div className="relative z-10 flex min-h-dvh items-start justify-center px-6 pb-10 pt-[13vh] md:items-center md:px-8 md:py-12">
+        <section className="w-full max-w-[28rem] md:max-w-[44rem]">
+          <div className="mb-12 flex items-center justify-center gap-4 md:mb-8 md:gap-0">
+            <JuxingMark className="h-20 w-20 md:hidden" />
+            <h1 className="whitespace-nowrap text-[2.7rem] font-bold leading-none text-blue-700 md:text-[2rem] md:font-semibold md:text-slate-950">
+              <span className="text-blue-700">聚星</span>数据平台
+            </h1>
           </div>
 
-          <form onSubmit={handleLogin} className="rounded-[32px] border border-white/75 bg-white/[0.92] p-4 shadow-[0_18px_54px_rgba(15,23,42,0.11)] backdrop-blur-2xl">
+          <form
+            onSubmit={handleLogin}
+            className="mx-auto w-full rounded-none bg-transparent p-0 md:max-w-[35rem] md:rounded-lg md:bg-white/92 md:px-14 md:py-12 md:shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:backdrop-blur"
+          >
             {error && (
-              <div className="mb-4 rounded-[20px] border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+              <div className="mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 md:rounded-md">
                 {error}
               </div>
             )}
 
-            <div className="space-y-4">
+            <div className="space-y-8 md:space-y-6">
               <label className="block">
-                <span className="mb-2 block px-1 text-sm font-medium text-slate-600">用户名</span>
-                <span className="flex h-12 items-center gap-3 rounded-[20px] border border-slate-200 bg-slate-50 px-4 transition focus-within:border-blue-300 focus-within:bg-white focus-within:shadow-[0_0_0_4px_rgba(37,99,235,0.08)]">
-                  <UserRound className="h-5 w-5 text-slate-400" />
+                <span className="sr-only">账号</span>
+                <span className="flex h-16 items-center gap-5 rounded-full border border-slate-200/90 bg-white/86 px-7 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition focus-within:border-blue-300 focus-within:bg-white focus-within:shadow-[0_0_0_4px_rgba(37,99,235,0.08)] md:h-14 md:rounded-md md:px-5 md:shadow-none">
+                  <UserRound className="h-8 w-8 text-slate-400 md:hidden" />
                   <input
                     type="text"
                     value={username}
                     onChange={(event) => setUsername(event.target.value)}
-                    placeholder="请输入用户名"
-                    className="min-w-0 flex-1 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-400"
+                    placeholder="账号 / 手机号 / 邮箱"
+                    className="min-w-0 flex-1 bg-transparent text-[1.55rem] text-slate-900 outline-none placeholder:text-slate-400 md:text-lg md:placeholder:text-slate-400"
                     required
                   />
                 </span>
               </label>
 
               <label className="block">
-                <span className="mb-2 block px-1 text-sm font-medium text-slate-600">密码</span>
-                <span className="flex h-12 items-center gap-3 rounded-[20px] border border-slate-200 bg-slate-50 px-4 transition focus-within:border-blue-300 focus-within:bg-white focus-within:shadow-[0_0_0_4px_rgba(37,99,235,0.08)]">
-                  <LockKeyhole className="h-5 w-5 text-slate-400" />
+                <span className="sr-only">密码</span>
+                <span className="flex h-16 items-center gap-5 rounded-full border border-slate-200/90 bg-white/86 px-7 shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition focus-within:border-blue-300 focus-within:bg-white focus-within:shadow-[0_0_0_4px_rgba(37,99,235,0.08)] md:h-14 md:rounded-md md:px-5 md:shadow-none">
+                  <LockKeyhole className="h-8 w-8 text-slate-400 md:hidden" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
-                    placeholder="请输入密码"
-                    className="min-w-0 flex-1 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-400"
+                    placeholder="密码"
+                    className="min-w-0 flex-1 bg-transparent text-[1.55rem] text-slate-900 outline-none placeholder:text-slate-400 md:text-lg"
                     required
                   />
+                  <button
+                    type="button"
+                    aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                    onClick={() => setShowPassword((value) => !value)}
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
                 </span>
               </label>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(event) => setRememberMe(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                记住用户名
-              </label>
-              <button
-                type="button"
-                onClick={() => { window.location.href = '/forgot-password'; }}
-                className="text-sm font-medium text-blue-600"
-              >
-                忘记密码？
-              </button>
             </div>
 
             <button
               type="submit"
               disabled={loading || loginSuccess}
-              className="login-action-button mt-5 flex h-12 w-full items-center justify-center rounded-[22px] bg-blue-600 px-4 text-base font-semibold text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="login-action-button mt-16 flex h-[4.35rem] w-full items-center justify-center rounded-full bg-blue-600 px-5 text-[1.8rem] font-semibold text-white shadow-[0_18px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 md:mt-8 md:h-14 md:text-lg"
             >
               {loginSuccess ? (
                 '登录成功'
               ) : loading ? (
                 <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  <Loader2 className="mr-2 h-6 w-6 animate-spin md:h-5 md:w-5" />
                   登录中...
                 </>
               ) : (
@@ -180,19 +169,27 @@ export default function LoginPage() {
               )}
             </button>
 
-            <button
-              type="button"
-              onClick={() => { window.location.href = '/register'; }}
-              className="mt-3 flex h-11 w-full items-center justify-center rounded-[20px] border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              注册新账号
-            </button>
+            <div className="mt-12 flex items-center justify-between gap-4 md:mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = '/forgot-password';
+                }}
+                className="order-1 flex h-14 min-w-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-300/95 bg-white/72 px-8 text-xl font-medium text-slate-600 transition hover:bg-white md:order-2 md:h-12 md:flex-1 md:text-base md:text-blue-700"
+              >
+                忘记密码
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = '/register';
+                }}
+                className="order-2 flex h-14 min-w-0 items-center justify-center whitespace-nowrap rounded-full border border-sky-700/70 bg-white/72 px-8 text-xl font-medium text-blue-700 transition hover:bg-white md:order-1 md:h-12 md:flex-1 md:text-base"
+              >
+                注册新账号
+              </button>
+            </div>
           </form>
-
-          <div className="mt-5 flex items-center justify-center gap-2 text-xs text-slate-400">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            账号权限与电脑端后台一致
-          </div>
         </section>
       </div>
     </main>

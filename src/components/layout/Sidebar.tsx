@@ -105,6 +105,7 @@ interface SidebarProps {
   onMobileClose?: () => void;
   permissions?: string[];
   isAdmin?: boolean;
+  unreadBadges?: Record<string, number>;
 }
 
 const modulePermissionMap: Record<string, string> = {
@@ -122,6 +123,7 @@ const modulePermissionMap: Record<string, string> = {
   'finance': 'finance',
   'generate': 'generate',
   'ai-chat': 'ai-chat',
+  'realtime-chat': 'realtime-chat',
   'assets': 'assets',
   'assets-overview': 'assets',
   'usermanage': 'usermanage',
@@ -182,6 +184,7 @@ function MenuItem({
   onMobileClose,
   permissions,
   isAdmin,
+  unreadBadges,
   level = 0
 }: { 
   item: NavMenuItem; 
@@ -192,6 +195,7 @@ function MenuItem({
   onMobileClose?: () => void;
   permissions: string[];
   isAdmin: boolean;
+  unreadBadges: Record<string, number>;
   level?: number;
 }) {
   const Icon = iconMap[item.icon] || LayoutDashboard;
@@ -201,6 +205,7 @@ function MenuItem({
   const hasActiveChild = hasChildren
     ? item.children?.some(child => hasActiveDescendant(child, activeKey)) || false
     : false;
+  const unreadCount = unreadBadges[item.key] || 0;
   const [isExpanded, setIsExpanded] = useState(hasActiveChild);
 
   useEffect(() => {
@@ -226,10 +231,21 @@ function MenuItem({
           )}
           onClick={() => !collapsed && setIsExpanded(!isExpanded)}
         >
-          <Icon className={cn('w-5 h-5 flex-shrink-0', !collapsed && 'mr-3')} />
+          <span className={cn('flex w-full items-center', collapsed && 'justify-center')}>
+            <span className={cn('relative flex shrink-0 items-center justify-center', !collapsed && 'mr-3')}>
+              <Icon className="w-5 h-5 flex-shrink-0" />
+              {collapsed && unreadCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+              )}
+            </span>
           {!collapsed && (
             <>
-              <span className="text-sm flex-1 text-left">{item.label}</span>
+              <span className="min-w-0 flex-1 truncate text-left text-sm">{item.label}</span>
+              {unreadCount > 0 && (
+                <span className="ml-2 min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
               {isExpanded ? (
                 <ChevronUp className="w-4 h-4" />
               ) : (
@@ -237,6 +253,7 @@ function MenuItem({
               )}
             </>
           )}
+          </span>
         </Button>
         
         {!collapsed && isExpanded && hasChildren && item.children && (
@@ -254,6 +271,7 @@ function MenuItem({
                   onMobileClose={onMobileClose}
                   permissions={permissions}
                   isAdmin={isAdmin}
+                  unreadBadges={unreadBadges}
                   level={level + 1}
                 />
               ))}
@@ -291,8 +309,20 @@ function MenuItem({
       )}
       onClick={handleClick}
     >
-      <Icon className={cn('w-5 h-5 flex-shrink-0', !collapsed && 'mr-3')} />
-      {!collapsed && <span className="text-sm">{item.label}</span>}
+      <span className={cn('flex w-full items-center', collapsed && 'justify-center')}>
+        <span className={cn('relative flex shrink-0 items-center justify-center', !collapsed && 'mr-3')}>
+          <Icon className="w-5 h-5 flex-shrink-0" />
+          {collapsed && unreadCount > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+          )}
+        </span>
+        {!collapsed && <span className="min-w-0 flex-1 truncate text-left text-sm">{item.label}</span>}
+        {!collapsed && unreadCount > 0 && (
+          <span className="ml-2 min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </span>
     </Button>
   );
 
@@ -319,7 +349,8 @@ export function Sidebar({
   mobileOpen = false,
   onMobileClose,
   permissions = [],
-  isAdmin = false
+  isAdmin = false,
+  unreadBadges = {},
 }: SidebarProps) {
   // AI对话状态
   const [aiChatDialogOpen, setAiChatDialogOpen] = useState(false);
@@ -554,6 +585,7 @@ export function Sidebar({
                 onMobileClose={onMobileClose}
                 permissions={permissions}
                 isAdmin={isAdmin}
+                unreadBadges={unreadBadges}
               />
             ))}
           </nav>
@@ -607,6 +639,7 @@ export function Sidebar({
             isMobile={false}
             permissions={permissions}
             isAdmin={isAdmin}
+            unreadBadges={unreadBadges}
             />
           ))}
         </nav>

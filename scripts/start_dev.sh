@@ -10,4 +10,4 @@ COZE_WORKSPACE_PATH="${COZE_WORKSPACE_PATH:-/workspace}"
 cd "${COZE_WORKSPACE_PATH}"
 
 echo "Starting dev server..."
-pnpm tsx watch src/server.ts
+pnpm tsx watch src/server.ts --dev

@@ -83,6 +83,7 @@ const defaultPermissions = [
   { id: 23, name: '数据库备份', code: 'database-backup', description: '备份和恢复系统数据库', module: 'settings' },
   { id: 24, name: '邮件配置', code: 'smtp', description: '配置系统邮件发送', module: 'settings' },
   { id: 25, name: '通知中心', code: 'notification-center', description: '发送和查看系统通知', module: 'settings' },
+  { id: 26, name: '实时聊天', code: 'realtime-chat', description: '群聊消息、图片和附件', module: 'settings' },
 ];
 
 const defaultRoles: Role[] = [
